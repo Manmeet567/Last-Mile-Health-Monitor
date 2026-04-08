@@ -195,9 +195,3 @@ For the detailed verified state of the repo, see [`last-mile-project-status.md`]
 - if you touch the posture pipeline, update tests around dropout handling, displayed-state stability, and session/reminder behavior
 - keep `last-mile-project-status.md` current when implementation state changes
 
-## Planning and Handoff Docs
-
-- [`last-mile-implementation-plan-tech-finalization.md`](./last-mile-implementation-plan-tech-finalization.md)
-- [`last-mile-full-implementation-plan.md`](./last-mile-full-implementation-plan.md)
-- [`last-mile-project-status.md`](./last-mile-project-status.md)
-- [`next-steps.md`](./next-steps.md)
