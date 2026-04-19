@@ -1,4 +1,4 @@
-import type { PostureFeatures } from '@/types/domain';
+import type { CalibrationProfile, PostureFeatures } from '@/types/domain';
 import {
   advancePostureStateMachine,
   createInitialPostureStateSnapshot,
@@ -10,8 +10,13 @@ function createFeatures(overrides?: Partial<PostureFeatures>): PostureFeatures {
     timestamp: 0,
     trunkAngleDeg: 0,
     headForwardOffset: 0,
+    earShoulderOffsetRatio: 0.2,
+    headForwardRatio: 0,
+    torsoLeanRatio: 0,
     shoulderTiltDeg: 0,
     shoulderProtractionProxy: 1,
+    shoulderCompressionRatio: 0,
+    shoulderAsymmetryRatio: 0,
     movementMagnitude: 0,
     isConfidenceSufficient: true,
     ...overrides,
@@ -26,6 +31,17 @@ function createInput(options?: {
   features?: PostureFeatures;
   signalQuality?: 'reliable' | 'grace_hold' | 'unreliable';
   signalDropoutDurationMs?: number;
+  calibrationProfile?: CalibrationProfile | null;
+  frameQuality?: {
+    state: 'GOOD' | 'LIMITED' | 'POOR';
+    score: number;
+    hasHeadAndShoulders: boolean;
+    hasTorsoContext: boolean;
+    isCentered: boolean;
+    usableForClassification: boolean;
+    cautiousClassification: boolean;
+    guidanceMessage: string | null;
+  };
 }) {
   return {
     timestamp: options?.timestamp ?? 0,
@@ -33,9 +49,19 @@ function createInput(options?: {
     reliableKeypointCount: options?.reliableKeypointCount ?? 8,
     hasRequiredTorsoKeypoints: options?.hasRequiredTorsoKeypoints ?? true,
     features: options?.features ?? createFeatures({ timestamp: options?.timestamp ?? 0 }),
-    calibrationProfile: null,
+    calibrationProfile: options?.calibrationProfile ?? null,
     signalQuality: options?.signalQuality ?? 'reliable',
     signalDropoutDurationMs: options?.signalDropoutDurationMs ?? 0,
+    frameQuality: options?.frameQuality ?? {
+      state: 'GOOD',
+      score: 0.92,
+      hasHeadAndShoulders: true,
+      hasTorsoContext: true,
+      isCentered: true,
+      usableForClassification: true,
+      cautiousClassification: false,
+      guidanceMessage: null,
+    },
   };
 }
 
@@ -86,6 +112,29 @@ describe('posture state machine', () => {
     expect(snapshot.emittedEvents).toEqual([]);
   });
 
+  it('prevents confident posture classification when frame quality is poor', () => {
+    const snapshot = advancePostureStateMachine({
+      previousSnapshot: createInitialPostureStateSnapshot(0),
+      input: createInput({
+        timestamp: 3_000,
+        frameQuality: {
+          state: 'POOR',
+          score: 0.24,
+          hasHeadAndShoulders: false,
+          hasTorsoContext: false,
+          isCentered: false,
+          usableForClassification: false,
+          cautiousClassification: false,
+          guidanceMessage: 'Move slightly back so your upper torso stays visible.',
+        },
+      }),
+    });
+
+    expect(snapshot.state).toBe('NO_PERSON');
+    expect(snapshot.candidateState).toBe('DETECTING');
+    expect(snapshot.reason).toMatch(/upper torso stays visible/i);
+  });
+
   it('moves from away to no person after the configured timeout', () => {
     let snapshot: PostureStateSnapshot = {
       state: 'AWAY',
@@ -111,6 +160,86 @@ describe('posture state machine', () => {
 
     expect(snapshot.state).toBe('NO_PERSON');
     expect(snapshot.emittedEvents).toEqual([]);
+  });
+
+  it('treats present but poorly framed input as guidance instead of no person', () => {
+    const snapshot = advancePostureStateMachine({
+      previousSnapshot: createInitialPostureStateSnapshot(0),
+      input: createInput({
+        timestamp: 1_000,
+        reliableKeypointCount: 3,
+        hasRequiredTorsoKeypoints: false,
+        poseConfidence: 0.42,
+        features: createFeatures({ timestamp: 1_000, isConfidenceSufficient: false }),
+        frameQuality: {
+          state: 'POOR',
+          score: 0.34,
+          hasHeadAndShoulders: true,
+          hasTorsoContext: false,
+          isCentered: true,
+          usableForClassification: false,
+          cautiousClassification: false,
+          guidanceMessage: 'Move slightly back so your upper torso stays visible.',
+        },
+      }),
+    });
+
+    expect(snapshot.candidateState).toBe('DETECTING');
+    expect(snapshot.reason).toMatch(/upper torso stays visible/i);
+  });
+
+  it('keeps mild slouch stable near the threshold until posture clearly recovers', () => {
+    const snapshot = advancePostureStateMachine({
+      previousSnapshot: {
+        state: 'MILD_SLOUCH',
+        candidateState: 'MILD_SLOUCH',
+        stateSince: 0,
+        candidateSince: 0,
+        reason: 'Stable mild slouch.',
+        emittedEvents: [],
+      },
+      input: createInput({
+        timestamp: 1_000,
+        features: createFeatures({ timestamp: 1_000, trunkAngleDeg: 11.2 }),
+      }),
+    });
+
+    expect(snapshot.state).toBe('MILD_SLOUCH');
+    expect(snapshot.candidateState).toBe('MILD_SLOUCH');
+    expect(snapshot.reason).toMatch(/recovery threshold/i);
+  });
+
+  it('requires slightly stronger evidence before entering mild slouch from good posture', () => {
+    const snapshot = advancePostureStateMachine({
+      previousSnapshot: {
+        state: 'GOOD_POSTURE',
+        candidateState: 'GOOD_POSTURE',
+        stateSince: 0,
+        candidateSince: 0,
+        reason: 'Stable good posture.',
+        emittedEvents: [],
+      },
+      input: createInput({
+        timestamp: 1_000,
+        features: createFeatures({ timestamp: 1_000, trunkAngleDeg: 12.5 }),
+      }),
+    });
+
+    expect(snapshot.state).toBe('GOOD_POSTURE');
+    expect(snapshot.candidateState).toBe('GOOD_POSTURE');
+  });
+
+  it('allows posture classification when frame quality is good', () => {
+    const snapshot = advancePostureStateMachine({
+      previousSnapshot: createInitialPostureStateSnapshot(0),
+      input: createInput({
+        timestamp: 3_000,
+        features: createFeatures({ timestamp: 3_000, trunkAngleDeg: 0 }),
+      }),
+    });
+
+    expect(snapshot.candidateState).toBe('GOOD_POSTURE');
+    expect(snapshot.reason).toMatch(/good range/i);
   });
 
   it('emits a break ended event when the user returns from away', () => {
@@ -156,5 +285,49 @@ describe('posture state machine', () => {
     expect(snapshot.candidateState).toBe('GOOD_POSTURE');
     expect(snapshot.reason).toMatch(/briefly/i);
     expect(snapshot.emittedEvents).toEqual([]);
+  });
+
+  it('uses baseline-relative scoring when calibration data exists', () => {
+    const calibrationProfile: CalibrationProfile = {
+      id: 'profile-1',
+      createdAt: 0,
+      updatedAt: 0,
+      baselineTrunkAngle: 10,
+      baselineHeadOffset: 0.1,
+      torsoLength: 1,
+      preferredSensitivity: 'medium',
+      mildSlouchThreshold: 18,
+      deepSlouchThreshold: 25,
+      headOffsetWarningThreshold: 0.32,
+      sampleCount: 72,
+    };
+
+    const withoutCalibration = advancePostureStateMachine({
+      previousSnapshot: createInitialPostureStateSnapshot(0),
+      input: createInput({
+        timestamp: 3_000,
+        features: createFeatures({
+          timestamp: 3_000,
+          trunkAngleDeg: 16,
+          headForwardOffset: 0.05,
+        }),
+      }),
+    });
+
+    const withCalibration = advancePostureStateMachine({
+      previousSnapshot: createInitialPostureStateSnapshot(0),
+      input: createInput({
+        timestamp: 3_000,
+        calibrationProfile,
+        features: createFeatures({
+          timestamp: 3_000,
+          trunkAngleDeg: 16,
+          headForwardOffset: 0.05,
+        }),
+      }),
+    });
+
+    expect(withoutCalibration.candidateState).toBe('MILD_SLOUCH');
+    expect(withCalibration.candidateState).toBe('GOOD_POSTURE');
   });
 });

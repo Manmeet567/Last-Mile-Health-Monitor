@@ -1,4 +1,4 @@
-﻿import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 
@@ -15,7 +15,16 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(/last-mile/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /live monitor/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/last[- ]mile/i).length).toBeGreaterThan(0);
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(
+      within(primaryNav).getByRole('link', { name: 'Dashboard' }),
+    ).toBeInTheDocument();
+    expect(
+      within(primaryNav).getByRole('link', { name: 'Posture' }),
+    ).toBeInTheDocument();
+    expect(
+      within(primaryNav).getByRole('link', { name: 'Symptoms' }),
+    ).toBeInTheDocument();
   });
 });

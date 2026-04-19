@@ -1,4 +1,4 @@
-﻿import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { SettingsPage } from '@/pages/settings/settings-page';
@@ -19,10 +19,6 @@ const mockedUseCalibrationProfile = vi.mocked(useCalibrationProfile);
 function createAppSettingsMock() {
   return {
     settings: {
-      targetInferenceFps: 12,
-      preferredModelVariant: 'lightning' as const,
-      theme: 'system' as const,
-      privacyMode: 'strict' as const,
       reminderSettings: {
         enabled: true,
         minimumSittingBeforeReminderMin: 45,
@@ -50,14 +46,11 @@ describe('SettingsPage', () => {
         updatedAt: 2,
         baselineTrunkAngle: 2,
         baselineHeadOffset: 0.1,
-        baselineShoulderLevelDelta: 0.1,
         torsoLength: 100,
         preferredSensitivity: 'medium',
-        confidenceThreshold: 0.6,
         mildSlouchThreshold: 8,
         deepSlouchThreshold: 14,
         headOffsetWarningThreshold: 0.2,
-        shoulderTiltWarningThreshold: 4,
         sampleCount: 40,
       },
       isLoading: false,
@@ -77,10 +70,18 @@ describe('SettingsPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: /settings now cover reminders/i })).toBeInTheDocument();
-    expect(screen.getByText(/a saved calibration profile is available/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /open onboarding/i })).toHaveAttribute('href', '/onboarding');
-    expect(screen.getByRole('link', { name: /privacy controls/i })).toHaveAttribute('href', '/privacy');
+    expect(
+      screen.getByRole('heading', { name: /settings now cover reminders/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/a saved calibration profile is available/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /open onboarding/i }),
+    ).toHaveAttribute('href', '/onboarding');
+    expect(
+      screen.getByRole('link', { name: /privacy controls/i }),
+    ).toHaveAttribute('href', '/privacy');
     expect(screen.getByText(/break reminder: 45 min/i)).toBeInTheDocument();
   });
 
@@ -117,7 +118,9 @@ describe('SettingsPage', () => {
     await user.type(postureThresholdInput, '240');
     await user.clear(cooldownInput);
     await user.type(cooldownInput, '30');
-    await user.click(screen.getByRole('button', { name: /save reminder settings/i }));
+    await user.click(
+      screen.getByRole('button', { name: /save reminder settings/i }),
+    );
 
     await waitFor(() => {
       expect(appSettings.saveReminderSettings).toHaveBeenCalledWith({
@@ -130,6 +133,8 @@ describe('SettingsPage', () => {
       });
     });
 
-    expect(screen.getByText(/reminder preferences saved locally/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/reminder preferences saved locally/i),
+    ).toBeInTheDocument();
   });
 });

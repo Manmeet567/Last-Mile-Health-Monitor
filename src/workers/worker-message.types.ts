@@ -1,10 +1,15 @@
 import type { PoseKeypoint } from '@/types/domain';
-import type { PoseWorkerBackend, PoseWorkerPhase } from '@/core/inference/inference.types';
+import type {
+  PoseModelVariant,
+  PoseWorkerBackend,
+  PoseWorkerPhase,
+} from '@/core/inference/inference.types';
 
 export type PoseWorkerInitMessage = {
   type: 'INIT';
   payload: {
     preferredBackend: PoseWorkerBackend;
+    modelVariant: PoseModelVariant;
   };
 };
 

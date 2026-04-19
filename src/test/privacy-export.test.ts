@@ -1,14 +1,14 @@
-﻿import { createPrivacyExportDocument, formatBytes, formatPrivacyExportFileName } from '@/core/privacy/privacy-export';
+import {
+  createPrivacyExportDocument,
+  formatBytes,
+  formatPrivacyExportFileName,
+} from '@/core/privacy/privacy-export';
 
 describe('privacy export helpers', () => {
   it('builds a structured local export document with record counts', () => {
     const document = createPrivacyExportDocument({
       exportedAt: 1_712_566_400_000,
       settings: {
-        targetInferenceFps: 12,
-        preferredModelVariant: 'lightning',
-        theme: 'system',
-        privacyMode: 'strict',
         reminderSettings: {
           enabled: true,
           minimumSittingBeforeReminderMin: 45,
@@ -23,14 +23,11 @@ describe('privacy export helpers', () => {
           updatedAt: 2,
           baselineTrunkAngle: 2,
           baselineHeadOffset: 0.1,
-          baselineShoulderLevelDelta: 0.2,
           torsoLength: 100,
           preferredSensitivity: 'medium',
-          confidenceThreshold: 0.6,
           mildSlouchThreshold: 8,
           deepSlouchThreshold: 14,
           headOffsetWarningThreshold: 0.2,
-          shoulderTiltWarningThreshold: 4,
           sampleCount: 40,
         },
       ],
@@ -74,15 +71,30 @@ describe('privacy export helpers', () => {
           timestamp: 80,
         },
       ],
-      sessionSamples: [{
-        id: 'sample-1',
-        sessionId: 'session-1',
-        timestamp: 60,
-      }],
+      symptomCheckIns: [
+        {
+          id: 'symptom-1',
+          createdAt: 81,
+          dateKey: '2026-04-08',
+          source: 'manual',
+          presetSymptoms: ['headache'],
+          customSymptoms: ['Jaw tension'],
+          severity: 3,
+          duration: '1-3-hours',
+          interferedWithWork: false,
+        },
+      ],
+      savedCustomSymptoms: [
+        {
+          id: 'custom-1',
+          label: 'Jaw tension',
+          createdAt: 70,
+        },
+      ],
     });
 
     expect(document.meta).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 3,
       privacyMode: 'local-only',
       recordCounts: {
         settings: 1,
@@ -90,17 +102,21 @@ describe('privacy export helpers', () => {
         sessions: 1,
         dailyMetrics: 1,
         events: 1,
-        sessionSamples: 1,
+        symptomCheckIns: 1,
+        savedCustomSymptoms: 1,
       },
     });
     expect(document.sessions).toHaveLength(1);
-    expect(document.settings?.preferredModelVariant).toBe('lightning');
+    expect(document.symptomCheckIns).toHaveLength(1);
+    expect(
+      document.settings?.reminderSettings.minimumSittingBeforeReminderMin,
+    ).toBe(45);
   });
 
   it('formats export filenames and storage sizes for the privacy UI', () => {
-    expect(formatPrivacyExportFileName(new Date('2026-04-08T10:45:00').getTime())).toBe(
-      'last-mile-local-data-20260408-1045.json',
-    );
+    expect(
+      formatPrivacyExportFileName(new Date('2026-04-08T10:45:00').getTime()),
+    ).toBe('last-mile-local-data-20260408-1045.json');
     expect(formatBytes(512)).toBe('512 B');
     expect(formatBytes(2048)).toBe('2.0 KB');
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');

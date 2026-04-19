@@ -8,21 +8,32 @@ import * as tf from '@tensorflow/tfjs-core';
 import wasmBinaryPath from '@tensorflow/tfjs-backend-wasm/dist/tfjs-backend-wasm.wasm?url';
 import wasmSimdBinaryPath from '@tensorflow/tfjs-backend-wasm/dist/tfjs-backend-wasm-simd.wasm?url';
 import wasmThreadedBinaryPath from '@tensorflow/tfjs-backend-wasm/dist/tfjs-backend-wasm-threaded-simd.wasm?url';
-import { MOVENET_MODEL_NAME } from '@/core/inference/inference.constants';
-import type { PoseWorkerBackend, PoseWorkerPhase } from '@/core/inference/inference.types';
+import {
+  MOVENET_MODEL_NAMES,
+  resolvePoseModelVariant,
+} from '@/core/inference/inference.constants';
+import type {
+  PoseModelVariant,
+  PoseWorkerBackend,
+  PoseWorkerPhase,
+} from '@/core/inference/inference.types';
 import type { PoseWorkerRequest, PoseWorkerResponse } from '@/workers/worker-message.types';
 
 const workerScope = self as DedicatedWorkerGlobalScope;
 
 let detector: poseDetection.PoseDetector | null = null;
 let activeBackend: PoseWorkerBackend = 'cpu';
+let activeModelVariant: PoseModelVariant = 'lightning';
 
 workerScope.onmessage = async (event: MessageEvent<PoseWorkerRequest>) => {
   const message = event.data;
 
   try {
     if (message.type === 'INIT') {
-      await initializeDetector(message.payload.preferredBackend);
+      await initializeDetector(
+        message.payload.preferredBackend,
+        message.payload.modelVariant,
+      );
       return;
     }
 
@@ -47,7 +58,10 @@ workerScope.onmessage = async (event: MessageEvent<PoseWorkerRequest>) => {
   }
 };
 
-async function initializeDetector(preferredBackend: PoseWorkerBackend) {
+async function initializeDetector(
+  preferredBackend: PoseWorkerBackend,
+  preferredModelVariant: PoseModelVariant,
+) {
   postStatus('BOOTING', null, 'Preparing TensorFlow.js runtime.');
   setWasmPaths({
     'tfjs-backend-wasm.wasm': wasmBinaryPath,
@@ -56,11 +70,16 @@ async function initializeDetector(preferredBackend: PoseWorkerBackend) {
   });
 
   activeBackend = await resolveBackend(preferredBackend);
-  postStatus('LOADING_MODEL', activeBackend, 'Loading MoveNet SinglePose Lightning.');
+  activeModelVariant = resolvePoseModelVariant(preferredModelVariant);
+  const modelName = MOVENET_MODEL_NAMES[activeModelVariant];
+  postStatus('LOADING_MODEL', activeBackend, `Loading ${modelName}.`, modelName);
 
   detector?.dispose();
   detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
-    modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+    modelType:
+      activeModelVariant === 'thunder'
+        ? poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
+        : poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
     enableSmoothing: true,
   });
 
@@ -68,10 +87,10 @@ async function initializeDetector(preferredBackend: PoseWorkerBackend) {
     type: 'READY',
     payload: {
       backend: activeBackend,
-      modelName: MOVENET_MODEL_NAME,
+      modelName,
     },
   });
-  postStatus('READY', activeBackend, 'MoveNet is ready for inference.', MOVENET_MODEL_NAME);
+  postStatus('READY', activeBackend, 'MoveNet is ready for inference.', modelName);
 }
 
 async function resolveBackend(preferredBackend: PoseWorkerBackend): Promise<PoseWorkerBackend> {

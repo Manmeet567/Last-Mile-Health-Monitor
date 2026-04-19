@@ -1,5 +1,6 @@
 import { computePostureFeatures } from '@/core/posture/posture-features';
 import { assessPoseConfidence } from '@/core/processing/confidence-gating';
+import { assessFrameQuality } from '@/core/processing/frame-quality';
 import { normalizePoseFrame } from '@/core/processing/keypoint-normalizer';
 import type { PoseFrame, PoseKeypoint } from '@/types/domain';
 
@@ -71,6 +72,47 @@ describe('processing pipeline utilities', () => {
     expect(features.shoulderTiltDeg).toBeCloseTo(0);
     expect(features.headForwardOffset).toBeCloseTo(0);
     expect(features.shoulderProtractionProxy).toBeCloseTo(1);
+    expect(features.headForwardRatio).toBeCloseTo(0);
+    expect(features.torsoLeanRatio).toBeCloseTo(0);
     expect(features.movementMagnitude).toBeNull();
+  });
+
+  it('grades poor framing as poor frame quality instead of usable posture input', () => {
+    const pose = createPoseFrame([
+      createKeypoint('left_shoulder', 12, 120, 0.82),
+      createKeypoint('right_shoulder', 54, 122, 0.81),
+    ], 0.55) as PoseFrame & { width: number; height: number };
+
+    pose.width = 640;
+    pose.height = 360;
+
+    const confidence = assessPoseConfidence(pose, { keypointThreshold: 0.3, minPoseScore: 0.5 });
+    const frameQuality = assessFrameQuality(pose, confidence);
+
+    expect(frameQuality.state).toBe('POOR');
+    expect(frameQuality.guidanceMessage).toMatch(/upper torso|centered|shoulders/i);
+    expect(frameQuality.usableForClassification).toBe(false);
+  });
+
+  it('marks a centered upper-body frame as good quality for classification', () => {
+    const pose = createPoseFrame([
+      createKeypoint('nose', 320, 95, 0.99),
+      createKeypoint('left_ear', 286, 103, 0.98),
+      createKeypoint('right_ear', 354, 103, 0.98),
+      createKeypoint('left_shoulder', 272, 152, 0.99),
+      createKeypoint('right_shoulder', 368, 152, 0.99),
+      createKeypoint('left_hip', 286, 258, 0.99),
+      createKeypoint('right_hip', 354, 258, 0.99),
+    ], 0.99) as PoseFrame & { width: number; height: number };
+
+    pose.width = 640;
+    pose.height = 360;
+
+    const confidence = assessPoseConfidence(pose, { keypointThreshold: 0.3, minPoseScore: 0.5 });
+    const frameQuality = assessFrameQuality(pose, confidence);
+
+    expect(frameQuality.state).toBe('GOOD');
+    expect(frameQuality.usableForClassification).toBe(true);
+    expect(frameQuality.guidanceMessage).toBeNull();
   });
 });

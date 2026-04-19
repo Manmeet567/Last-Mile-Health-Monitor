@@ -19,9 +19,11 @@ function createPrivacyControlsMock() {
       completedSessionsCount: 2,
       eventsCount: 6,
       dailyMetricsCount: 4,
-      sessionSamplesCount: 0,
+      symptomCheckInsCount: 2,
+      savedCustomSymptomsCount: 3,
       latestCompletedSessionAt: new Date('2026-04-08T10:30:00').getTime(),
       latestEventAt: new Date('2026-04-08T11:00:00').getTime(),
+      latestSymptomCheckInAt: new Date('2026-04-08T12:00:00').getTime(),
     },
     runtimeStatus: {
       isOnline: false,
@@ -62,10 +64,14 @@ describe('PrivacyPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: /privacy and local data controls/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /privacy and local data controls/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Settings records')).toBeInTheDocument();
     expect(screen.getByText('Calibration profiles')).toBeInTheDocument();
     expect(screen.getByText('Completed sessions')).toBeInTheDocument();
+    expect(screen.getByText('Symptom check-ins')).toBeInTheDocument();
+    expect(screen.getByText('Custom symptoms')).toBeInTheDocument();
     expect(screen.getByText('Offline')).toBeInTheDocument();
     expect(screen.getByText('Standalone')).toBeInTheDocument();
     expect(screen.getByText('2.0 KB')).toBeInTheDocument();
@@ -89,9 +95,13 @@ describe('PrivacyPage', () => {
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByRole('button', { name: /refresh local status/i }));
+    await user.click(
+      screen.getByRole('button', { name: /refresh local status/i }),
+    );
     await user.click(screen.getByRole('button', { name: /export json/i }));
-    await user.click(screen.getByRole('button', { name: /reset calibration/i }));
+    await user.click(
+      screen.getByRole('button', { name: /reset calibration/i }),
+    );
     await user.click(screen.getByRole('button', { name: /clear history/i }));
     await user.click(screen.getByRole('button', { name: /clear everything/i }));
 

@@ -49,7 +49,10 @@ describe('session aggregator', () => {
 
     const finalized = finalizeSessionAccumulator(accumulator, 9_000);
     const session = materializeMonitoringSession(finalized, 9_000, 9_000);
-    const dailyMetrics = mergeSessionIntoDailyMetrics(createEmptyDailyMetrics('2026-04-07'), session);
+    const dailyMetrics = mergeSessionIntoDailyMetrics(
+      createEmptyDailyMetrics('2026-04-07'),
+      session,
+    );
 
     expect(session.breakCount).toBe(1);
     expect(session.sittingBoutCount).toBe(2);
@@ -63,23 +66,33 @@ describe('session aggregator', () => {
   });
 
   it('splits finalized daily contributions across a midnight boundary', () => {
-    const startedAt = Date.parse('2026-04-07T23:50:00.000Z');
-    let accumulator = createSessionAccumulator('session-cross-midnight', startedAt, 'GOOD_POSTURE');
+    const startedAt = new Date(2026, 3, 7, 23, 50, 0, 0).getTime();
+    let accumulator = createSessionAccumulator(
+      'session-cross-midnight',
+      startedAt,
+      'GOOD_POSTURE',
+    );
 
     accumulator = advanceSessionAccumulator(accumulator, {
-      timestamp: Date.parse('2026-04-08T00:10:00.000Z'),
+      timestamp: new Date(2026, 3, 8, 0, 10, 0, 0).getTime(),
       currentState: 'AWAY',
     });
 
     const finalized = finalizeSessionAccumulator(
       accumulator,
-      Date.parse('2026-04-08T00:15:00.000Z'),
+      new Date(2026, 3, 8, 0, 15, 0, 0).getTime(),
     );
     const dailyContributions = materializeDailyMetricsContributions(finalized);
+    const firstDayKey = new Date(2026, 3, 7, 12, 0, 0, 0)
+      .toISOString()
+      .slice(0, 10);
+    const secondDayKey = new Date(2026, 3, 8, 12, 0, 0, 0)
+      .toISOString()
+      .slice(0, 10);
 
     expect(dailyContributions).toEqual([
       expect.objectContaining({
-        dateKey: '2026-04-07',
+        dateKey: firstDayKey,
         totalMonitoringSec: 600,
         totalSittingSec: 600,
         goodPostureSec: 600,
@@ -88,7 +101,7 @@ describe('session aggregator', () => {
         sittingBoutCount: 1,
       }),
       expect.objectContaining({
-        dateKey: '2026-04-08',
+        dateKey: secondDayKey,
         totalMonitoringSec: 900,
         totalSittingSec: 600,
         goodPostureSec: 600,
@@ -99,7 +112,7 @@ describe('session aggregator', () => {
     ]);
 
     const mergedTodayMetrics = mergeDailyMetrics(
-      createEmptyDailyMetrics('2026-04-08'),
+      createEmptyDailyMetrics(secondDayKey),
       dailyContributions[1],
     );
 
