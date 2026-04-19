@@ -24,13 +24,13 @@ Last Mile Health Monitor is a local-first posture and break-awareness web app bu
 ### Calibration
 
 - onboarding flow for collecting baseline posture samples
-- user-specific thresholds for slouch, head offset, and shoulder tilt
+- user-specific thresholds for slouch and head offset
 - persisted calibration profile in IndexedDB
 
 ### Analytics and history
 
 - local monitoring sessions and posture-event logging
-- daily rollups and cross-midnight aggregation
+- daily rollups and cross-midnight aggregation by the browser user's local calendar day
 - dashboard summaries and trends
 - history page for saved sessions and event timelines
 
@@ -86,6 +86,7 @@ The main runtime flow is:
 `camera stream -> video element -> createImageBitmap -> worker -> MoveNet inference -> confidence gating -> normalization -> smoothing -> feature extraction -> posture state machine -> displayed posture state -> reminders/session metrics -> IndexedDB -> dashboard/history/privacy UI`
 
 Important privacy characteristic:
+
 - camera frames and pose processing stay in the browser
 - app data is stored locally in IndexedDB
 - there is no server-side persistence in the current implementation
@@ -184,7 +185,6 @@ For the detailed verified state of the repo, see [`last-mile-project-status.md`]
 - there is no real hardware-webcam end-to-end test yet; the live-monitor browser test uses mocked media input
 - reminder recovery history is not persisted across full app restarts
 - privacy export is JSON-only
-- `sessionSamples` exists in the schema, but no current runtime feature writes to it
 - the Zustand store is mostly a scaffold, not the main application-state layer
 - this workspace is not currently a Git repository, so Husky hooks are not active until Git is initialized
 
@@ -195,3 +195,9 @@ For the detailed verified state of the repo, see [`last-mile-project-status.md`]
 - if you touch the posture pipeline, update tests around dropout handling, displayed-state stability, and session/reminder behavior
 - keep `last-mile-project-status.md` current when implementation state changes
 
+## Planning and Handoff Docs
+
+- [`last-mile-implementation-plan-tech-finalization.md`](./last-mile-implementation-plan-tech-finalization.md)
+- [`last-mile-full-implementation-plan.md`](./last-mile-full-implementation-plan.md)
+- [`last-mile-project-status.md`](./last-mile-project-status.md)
+- [`next-steps.md`](./next-steps.md)

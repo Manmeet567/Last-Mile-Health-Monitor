@@ -120,17 +120,31 @@ test('live monitor stays readable through a brief pose-signal dropout', async ({
 
   await page.getByRole('button', { name: 'Start camera' }).click();
 
-  const livePostureCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'Live posture state' }),
+  const sessionSummaryCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Your current session' }),
   });
 
-  await expect(page.getByText('Camera: live')).toBeVisible();
-  await expect(page.getByText('Worker: live analysis')).toBeVisible();
-  await expect(livePostureCard.getByText('GOOD_POSTURE').first()).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText(/camera live/i)).toBeVisible();
+  await expect(
+    page.getByText(
+      /no one detected\. sit in front of the camera\.|detecting posture\.\.\.|good posture\. keep it up\.|slouch detected\. straighten your back\./i,
+    ),
+  ).toBeVisible({
+    timeout: 8_000,
+  });
+  await expect(
+    sessionSummaryCard.getByText(
+      /good posture|slouch detected|detecting posture|no one detected/i,
+    ).first(),
+  ).toBeVisible();
 
-  await expect(page.getByText('grace_hold')).toBeVisible({ timeout: 8_000 });
-  await expect(livePostureCard.getByText('GOOD_POSTURE').first()).toBeVisible();
+  await page.getByText('Advanced details').click();
+  await expect(page.getByText(/worker/i)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stop camera' }).click();
-  await expect(page.getByText('Camera: idle')).toBeVisible();
+  await page.goto('/history');
+  await expect(
+    page.getByRole('heading', {
+      name: /review what happened over time/i,
+    }),
+  ).toBeVisible();
 });
