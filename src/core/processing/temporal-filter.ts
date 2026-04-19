@@ -84,8 +84,13 @@ export class PoseSignalSmoother {
   private readonly featureFilters = {
     trunkAngleDeg: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
     headForwardOffset: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
+    earShoulderOffsetRatio: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
+    headForwardRatio: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
+    torsoLeanRatio: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
     shoulderTiltDeg: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
     shoulderProtractionProxy: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
+    shoulderCompressionRatio: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
+    shoulderAsymmetryRatio: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
     movementMagnitude: new OneEuroFilter({ minCutoff: 0.8, beta: 0.02 }),
   };
 
@@ -101,10 +106,31 @@ export class PoseSignalSmoother {
       ...features,
       trunkAngleDeg: this.smoothFeatureValue('trunkAngleDeg', features.trunkAngleDeg, features.timestamp),
       headForwardOffset: this.smoothFeatureValue('headForwardOffset', features.headForwardOffset, features.timestamp),
+      earShoulderOffsetRatio: this.smoothFeatureValue(
+        'earShoulderOffsetRatio',
+        features.earShoulderOffsetRatio,
+        features.timestamp,
+      ),
+      headForwardRatio: this.smoothFeatureValue(
+        'headForwardRatio',
+        features.headForwardRatio,
+        features.timestamp,
+      ),
+      torsoLeanRatio: this.smoothFeatureValue('torsoLeanRatio', features.torsoLeanRatio, features.timestamp),
       shoulderTiltDeg: this.smoothFeatureValue('shoulderTiltDeg', features.shoulderTiltDeg, features.timestamp),
       shoulderProtractionProxy: this.smoothFeatureValue(
         'shoulderProtractionProxy',
         features.shoulderProtractionProxy,
+        features.timestamp,
+      ),
+      shoulderCompressionRatio: this.smoothFeatureValue(
+        'shoulderCompressionRatio',
+        features.shoulderCompressionRatio,
+        features.timestamp,
+      ),
+      shoulderAsymmetryRatio: this.smoothFeatureValue(
+        'shoulderAsymmetryRatio',
+        features.shoulderAsymmetryRatio,
         features.timestamp,
       ),
       movementMagnitude: this.smoothFeatureValue('movementMagnitude', features.movementMagnitude, features.timestamp),

@@ -4,7 +4,10 @@ import type {
   PostureEvent,
   PostureFeatures,
 } from '@/types/domain';
-import type { PoseSignalQuality } from '@/core/processing/processing.types';
+import type {
+  FrameQualityAssessment,
+  PoseSignalQuality,
+} from '@/core/processing/processing.types';
 
 export type PostureStateMachineInput = {
   timestamp: number;
@@ -15,6 +18,7 @@ export type PostureStateMachineInput = {
   calibrationProfile: CalibrationProfile | null;
   signalQuality: PoseSignalQuality;
   signalDropoutDurationMs: number;
+  frameQuality: FrameQualityAssessment;
 };
 
 export type PostureStateMachineConfig = {
@@ -23,6 +27,13 @@ export type PostureStateMachineConfig = {
   mildSlouchThreshold: number;
   deepSlouchThreshold: number;
   headOffsetThreshold: number;
+  headForwardRatioThreshold: number;
+  torsoLeanRatioThreshold: number;
+  shoulderCompressionThreshold: number;
+  severeShoulderCompressionThreshold: number;
+  earShoulderOffsetRatioThreshold: number;
+  postureHysteresisDeg: number;
+  headOffsetHysteresis: number;
   awayToNoPersonMs: number;
   dwellMs: Record<LivePostureState, number>;
 };

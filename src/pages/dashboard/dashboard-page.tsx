@@ -1,374 +1,702 @@
-﻿import { Link } from 'react-router-dom';
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { PageHeader } from '@/components/common/page-header';
-import { calculateSessionQuality } from '@/core/history/history-selectors';
+import { getPresetSymptomLabel, symptomPresetGroups } from '@/core/symptoms/symptom-options';
+import { DashboardCard } from '@/components/ui/dashboard-card';
+import { DashboardLinkButton } from '@/components/ui/dashboard-button';
+import { SkeletonBlock } from '@/components/ui/skeleton-block';
 import { useDashboardData } from '@/hooks/useDashboardData';
-import type { MonitoringSession } from '@/types/domain';
+import { useSymptomCheckIns } from '@/hooks/useSymptomCheckIns';
+import { toDateKey } from '@/utils/date';
+import type { SymptomCheckIn } from '@/types/domain';
 
 export function DashboardPage() {
   const dashboard = useDashboardData();
-  const hasTrendData = dashboard.trendPoints.some((point) => point.monitoringMinutes > 0);
-  const hasDistributionData = dashboard.postureDistribution.some((entry) => entry.value > 0);
+  const symptomCheckIns = useSymptomCheckIns();
+
+  if (dashboard.isLoading || symptomCheckIns.isLoading) {
+    return <DashboardLoadingState />;
+  }
+
+  const todayDateKey = toDateKey(Date.now());
+  const latestDailyOverview = dashboard.latestDailyOverview;
+  const latestOverviewIsToday = latestDailyOverview?.dateKey === todayDateKey;
+  const todayMonitoringSec =
+    latestOverviewIsToday && latestDailyOverview?.hasPostureData
+      ? latestDailyOverview.monitoringSec
+      : 0;
+  const todayBreaks =
+    latestOverviewIsToday && latestDailyOverview?.hasPostureData
+      ? latestDailyOverview.totalBreaks
+      : 0;
+  const todaySymptomsCount =
+    latestOverviewIsToday && latestDailyOverview?.hasSymptomData
+      ? latestDailyOverview.symptomsReported.length
+      : symptomCheckIns.todayCheckIn
+        ? getSymptomLabels(symptomCheckIns.todayCheckIn).length
+        : 0;
+  const lastStatus =
+    latestOverviewIsToday && latestDailyOverview?.hasPostureData
+      ? latestDailyOverview.dominantPostureLabel ?? 'Posture recorded'
+      : 'No posture yet';
+  const postureTone = getPostureTone(
+    latestDailyOverview?.postureQualityPct ?? 0,
+    latestDailyOverview?.hasPostureData ?? false,
+  );
+  const lastStatusClassName = getLastStatusClassName(lastStatus, postureTone);
+  const recentSymptomEntries = symptomCheckIns.recentCheckIns.slice(0, 3);
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow="Milestone 7"
-        title="Your local posture dashboard is now live"
-        description="This view turns the saved session summaries, daily rollups, and reminder events into privacy-safe trends so the project can finally show progress over time instead of just live telemetry."
-        actions={
-          <div className="flex flex-wrap gap-3">
-            <Link
-              to="/live-monitor"
-              className="inline-flex items-center rounded-full bg-accent-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-accent-300"
-            >
-              Open Live Monitor
-            </Link>
-            <Link
-              to="/history"
-              className="inline-flex items-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-            >
-              Open Full History
-            </Link>
-          </div>
-        }
-      >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            label="7-day monitoring"
-            value={formatSecondsCompact(dashboard.summary.totalMonitoringSec)}
-            detail={`${dashboard.summary.trackedDays} tracked days`}
-          />
-          <StatCard
-            label="Posture quality"
-            value={`${dashboard.summary.postureQualityPct}%`}
-            detail="Good-posture share of sitting time"
-          />
-          <StatCard
-            label="Breaks recorded"
-            value={String(dashboard.summary.totalBreaks)}
-            detail={`${dashboard.summary.remindersTriggered} reminders triggered`}
-          />
-          <StatCard
-            label="Longest sitting bout"
-            value={formatSecondsCompact(dashboard.summary.longestSittingBoutSec)}
-            detail="Longest local stretch without a break"
-          />
-        </div>
-      </PageHeader>
-
-      <section className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-        <article className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-panel backdrop-blur">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent-300">
-                Weekly trend
-              </p>
-              <h2 className="mt-2 font-display text-2xl text-white">Monitoring vs sitting</h2>
-            </div>
-            {dashboard.isLoading ? <p className="text-sm text-slate-400">Loading local data...</p> : null}
-          </div>
-
-          {hasTrendData ? (
-            <div className="mt-6 h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dashboard.trendPoints}>
-                  <defs>
-                    <linearGradient id="monitoringFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#67e8f9" stopOpacity={0.5} />
-                      <stop offset="95%" stopColor="#67e8f9" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="sittingFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(148, 163, 184, 0.12)" vertical={false} />
-                  <XAxis dataKey="label" stroke="#94a3b8" tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} width={40} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'rgba(2, 6, 23, 0.92)',
-                      border: '1px solid rgba(148, 163, 184, 0.18)',
-                      borderRadius: '18px',
-                      color: '#e2e8f0',
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="monitoringMinutes"
-                    stroke="#67e8f9"
-                    strokeWidth={2}
-                    fill="url(#monitoringFill)"
-                    name="Monitoring (min)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="sittingMinutes"
-                    stroke="#38bdf8"
-                    strokeWidth={2}
-                    fill="url(#sittingFill)"
-                    name="Sitting (min)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <EmptyState>
-              Finalize at least one monitoring session and the weekly trend will start charting your local minutes here.
-            </EmptyState>
-          )}
-        </article>
-
-        <article className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-panel">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent-300">
-            Posture mix
-          </p>
-          <h2 className="mt-2 font-display text-2xl text-white">How your sitting time is distributed</h2>
-
-          {hasDistributionData ? (
-            <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={dashboard.postureDistribution}
-                      dataKey="value"
-                      nameKey="label"
-                      innerRadius={64}
-                      outerRadius={88}
-                      paddingAngle={4}
-                    >
-                      {dashboard.postureDistribution.map((entry) => (
-                        <Cell key={entry.label} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(2, 6, 23, 0.92)',
-                        border: '1px solid rgba(148, 163, 184, 0.18)',
-                        borderRadius: '18px',
-                        color: '#e2e8f0',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+    <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.82fr)_minmax(338px,1fr)]">
+        <div className="space-y-6">
+          <DashboardCard glow="blue" className="p-6 lg:p-7">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[#7EA8E6]">
+                  Desk Health
+                </p>
+                <h1 className="mt-3 text-[2.25rem] font-semibold leading-[1.04] tracking-[-0.045em] text-[#F6FAFF] sm:text-[2.58rem]">
+                  {getGreetingHeading()}
+                </h1>
+                <p className="mt-2.5 text-[0.98rem] text-[#9EB1D0] sm:text-[1.04rem]">
+                  {formatLongDate(Date.now())}
+                </p>
               </div>
+              <TrackingBadge isActive={latestOverviewIsToday || Boolean(symptomCheckIns.todayCheckIn)} />
+            </div>
+          </DashboardCard>
 
-              <div className="space-y-3">
-                {dashboard.postureDistribution.map((entry) => (
-                  <div key={entry.label} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: entry.color }}
-                          aria-hidden="true"
-                        />
-                        <span className="font-semibold text-white">{entry.label}</span>
-                      </div>
-                      <span>{formatSecondsCompact(entry.value)}</span>
-                    </div>
-                    <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-400">
-                      {entry.minutes.toFixed(1)} minutes stored locally
-                    </p>
-                  </div>
+          <DashboardCard className="p-7 lg:p-8">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-[1.9rem] font-semibold tracking-[-0.035em] text-[#F3F7FF]">
+                  Today&apos;s Summary
+                </h2>
+                <p className="mt-2 text-[0.95rem] text-[#8FA4C8]">
+                  A local snapshot of what has been recorded in this browser.
+                </p>
+              </div>
+              <p className="pt-1 text-[0.95rem] font-medium text-[#8FA4C8]">
+                {formatMonthDay(Date.now())}
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <MiniStatCard
+                icon="clock"
+                label="Monitoring"
+                value={formatHoursAndMinutes(todayMonitoringSec)}
+                detail={
+                  latestOverviewIsToday
+                    ? 'Recorded in local posture history'
+                    : 'No monitoring saved today yet'
+                }
+              />
+              <MiniStatCard
+                icon="status"
+                label="Last status"
+                value={lastStatus}
+                detail={
+                  latestOverviewIsToday
+                    ? "Based on today's latest posture rollup"
+                    : 'Start tracking to see data'
+                }
+                valueClassName={lastStatusClassName}
+              />
+              <MiniStatCard
+                icon="symptom"
+                label="Symptoms"
+                value={String(todaySymptomsCount)}
+                detail={
+                  symptomCheckIns.todayCheckIn
+                    ? `Last check-in ${formatShortTime(symptomCheckIns.todayCheckIn.createdAt)}`
+                    : 'No symptom check-in saved today'
+                }
+              />
+              <MiniStatCard
+                icon="break"
+                label="Breaks taken"
+                value={String(todayBreaks)}
+                detail={
+                  latestOverviewIsToday
+                    ? `Recent 14-day target context: ${dashboard.summary.totalBreaks} stored breaks`
+                    : 'No breaks recorded yet'
+                }
+              />
+            </div>
+          </DashboardCard>
+
+          <div className="space-y-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[#7EA8E6]">
+              Quick Actions
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <DashboardLinkButton
+                to="/posture?mode=live"
+                variant="primary"
+                className="min-w-[12.75rem] justify-center"
+              >
+                <ActionGlyph name="pulse" />
+                Start tracking
+              </DashboardLinkButton>
+              <DashboardLinkButton
+                to="/symptoms"
+                variant="secondary"
+                className="min-w-[11.25rem] justify-center"
+              >
+                <ActionGlyph name="heart" />
+                Log symptoms
+              </DashboardLinkButton>
+              <DashboardLinkButton
+                to="/history"
+                variant="secondary"
+                className="min-w-[11.25rem] justify-center"
+              >
+                <ActionGlyph name="calendar" />
+                View history
+              </DashboardLinkButton>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <DashboardCard className="p-6" glow="green">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[1.65rem] font-semibold tracking-[-0.03em] text-[#F3F7FF]">
+                  Posture Snapshot
+                </h2>
+                <p className="mt-1.5 text-[0.92rem] text-[#8FA4C8]">
+                  Latest recorded posture mix
+                </p>
+              </div>
+              <StatusPill
+                label={postureTone.label}
+                tone={postureTone.pillTone}
+              />
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-full bg-[#1B2642]">
+              <div className="flex h-3 w-full">
+                {buildPostureSegments(latestDailyOverview).map((segment) => (
+                  <div
+                    key={segment.label}
+                    className={`${segment.colorClassName} transition-[width] duration-[420ms] ease-out`}
+                    style={{ width: `${segment.widthPct}%` }}
+                  />
                 ))}
               </div>
             </div>
-          ) : (
-            <EmptyState>
-              Posture distribution appears after the first daily rollup includes sitting time.
-            </EmptyState>
-          )}
-        </article>
-      </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <article className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-panel backdrop-blur">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent-300">
-                Recent sessions
-              </p>
-              <h2 className="mt-2 font-display text-2xl text-white">Saved session snapshots</h2>
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[0.92rem] text-[#A7B7D6]">
+              {buildPostureSegments(latestDailyOverview).map((segment) => (
+                <div key={segment.label} className="flex items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${segment.colorClassName}`}
+                  />
+                  <span>
+                    {segment.label} {segment.widthPct}%
+                  </span>
+                </div>
+              ))}
             </div>
-            {dashboard.latestCompletedSession ? (
-              <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-right text-sm text-slate-300">
-                <p className="text-xs uppercase tracking-[0.22em] text-accent-300">Latest complete</p>
-                <p className="mt-2 font-semibold text-white">
-                  {formatShortDateTime(dashboard.latestCompletedSession.endedAt ?? dashboard.latestCompletedSession.startedAt)}
+
+            <div className="mt-5 rounded-[16px] bg-[#1A2542] px-4 py-3.5 text-[0.92rem] text-[#B9C9E3]">
+              {latestDailyOverview?.hasPostureData ? (
+                <>
+                  {latestDailyOverview.label} - {formatHoursAndMinutes(latestDailyOverview.monitoringSec)} monitored
+                </>
+              ) : (
+                'Start tracking to see data in this posture snapshot.'
+              )}
+            </div>
+
+            <DashboardLinkButton
+              to="/posture"
+              variant="secondary"
+              className="mt-5 w-full justify-center"
+            >
+              Open Posture
+            </DashboardLinkButton>
+          </DashboardCard>
+
+          <DashboardCard className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[1.65rem] font-semibold tracking-[-0.03em] text-[#F3F7FF]">
+                  Symptom Summary
+                </h2>
+                <p className="mt-1.5 text-[0.92rem] text-[#8FA4C8]">
+                  Recent local symptom entries
                 </p>
               </div>
-            ) : null}
-          </div>
-
-          {dashboard.recentSessions.length > 0 ? (
-            <div className="mt-6 space-y-3">
-              {dashboard.recentSessions.map((session) => (
-                <SessionSummaryCard key={session.id} session={session} />
-              ))}
+              <p className="pt-1 text-[0.92rem] font-medium text-[#8FA4C8]">Today</p>
             </div>
-          ) : (
-            <EmptyState>
-              No completed sessions are saved yet. Start the live monitor, let it run for a bit, and stop the camera to create your first history entry.
-            </EmptyState>
-          )}
-        </article>
 
-        <article className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-panel">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent-300">
-            Recent activity
-          </p>
-          <h2 className="mt-2 font-display text-2xl text-white">Latest stored events</h2>
-
-          {dashboard.eventFeed.length > 0 ? (
-            <div className="mt-6 space-y-3">
-              {dashboard.eventFeed.map((event) => (
-                <EventRow
-                  key={event.id}
-                  label={event.label}
-                  detail={event.detail}
-                  timestamp={event.timestamp}
-                  tone={event.tone}
-                />
-              ))}
+            <div className="mt-5 space-y-3">
+              {recentSymptomEntries.length > 0 ? (
+                recentSymptomEntries.map((entry) => (
+                  <SymptomRow key={entry.id} entry={entry} />
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/8 bg-[#19233E] px-4 py-5 text-sm leading-6 text-[#93A7C7]">
+                  No symptom check-ins yet. Log symptoms to see data in this
+                  summary.
+                </div>
+              )}
             </div>
-          ) : (
-            <EmptyState>
-              Event history will populate here after posture transitions, breaks, and reminder nudges are saved.
-            </EmptyState>
-          )}
-        </article>
-      </section>
+
+            <DashboardLinkButton
+              to="/symptoms"
+              variant="secondary"
+              className="mt-5 w-full justify-center"
+            >
+              Log new symptom
+            </DashboardLinkButton>
+          </DashboardCard>
+
+          <DashboardCard className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#163156] text-[#6BCBFF]">
+                <ActionGlyph name="continue" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-[1.55rem] font-semibold tracking-[-0.03em] text-[#F3F7FF]">
+                  Continue where you left off
+                </h2>
+                <p className="mt-2.5 text-[0.95rem] leading-6 text-[#A7B7D6]">
+                  {latestDailyOverview
+                    ? `Your latest local record is ${latestDailyOverview.label}. Re-open posture tracking or review the combined history to continue from there.`
+                    : 'Start with posture tracking or a symptom check-in to begin your local desk-health record.'}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <DashboardLinkButton
+                    to="/posture?mode=live"
+                    variant="primary"
+                    className="min-w-[10.5rem]"
+                  >
+                    Resume posture
+                  </DashboardLinkButton>
+                  <DashboardLinkButton to="/history" variant="ghost">
+                    Review history
+                  </DashboardLinkButton>
+                </div>
+              </div>
+            </div>
+          </DashboardCard>
+        </div>
+      </div>
     </div>
   );
 }
 
-type StatCardProps = {
-  label: string;
-  value: string;
-  detail: string;
-};
-
-function StatCard({ label, value, detail }: StatCardProps) {
+function TrackingBadge({ isActive }: { isActive: boolean }) {
   return (
-    <article className="rounded-2xl border border-white/10 bg-slate-950/45 p-5 text-sm text-slate-300">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-300">{label}</p>
-      <p className="mt-3 font-display text-3xl text-white">{value}</p>
-      <p className="mt-2 leading-6 text-slate-400">{detail}</p>
-    </article>
-  );
-}
-
-type SessionSummaryCardProps = {
-  session: MonitoringSession;
-};
-
-function SessionSummaryCard({ session }: SessionSummaryCardProps) {
-  return (
-    <article className="rounded-2xl border border-white/10 bg-slate-950/55 p-5 text-sm text-slate-300">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-300">
-            {formatShortDateTime(session.startedAt)}
-          </p>
-          <h3 className="mt-2 font-semibold text-white">{formatSecondsCompact(session.totalDurationSec)} session</h3>
-        </div>
-        <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
-          {calculateSessionQuality(session)}% quality
-        </div>
-      </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
-        <MiniMetric label="Sitting" value={formatSecondsCompact(session.sittingSec)} />
-        <MiniMetric label="Good posture" value={formatSecondsCompact(session.goodPostureSec)} />
-        <MiniMetric label="Breaks" value={String(session.breakCount)} />
-        <MiniMetric label="Longest bout" value={formatSecondsCompact(session.longestSittingBoutSec)} />
-      </div>
-    </article>
-  );
-}
-
-type MiniMetricProps = {
-  label: string;
-  value: string;
-};
-
-function MiniMetric({ label, value }: MiniMetricProps) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
-      <p className="mt-2 font-semibold text-white">{value}</p>
+    <div
+      className={[
+        'inline-flex items-center gap-2.5 rounded-full px-4 py-2.5 text-[0.92rem] font-semibold',
+        isActive
+          ? 'border border-[#4ADE80]/30 bg-[#173126] text-[#4ADE80]'
+          : 'border border-white/8 bg-[#1A2542] text-[#A7B7D6]',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'h-2.5 w-2.5 rounded-full',
+          isActive ? 'bg-[#4ADE80]' : 'bg-[#8798B6]',
+        ].join(' ')}
+      />
+      {isActive ? 'Tracking active' : 'Ready to track'}
     </div>
   );
 }
 
-type EventRowProps = {
+type MiniStatCardProps = {
+  icon: 'clock' | 'status' | 'symptom' | 'break';
   label: string;
+  value: string;
   detail: string;
-  timestamp: number;
-  tone: 'neutral' | 'good' | 'warning';
+  valueClassName?: string;
 };
 
-function EventRow({ label, detail, timestamp, tone }: EventRowProps) {
-  const toneClassName = {
-    neutral: 'border-white/10 bg-white/5 text-slate-300',
-    good: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100',
-    warning: 'border-amber-400/25 bg-amber-400/10 text-amber-100',
+function MiniStatCard({
+  icon,
+  label,
+  value,
+  detail,
+  valueClassName,
+}: MiniStatCardProps) {
+  return (
+    <div className="min-h-[9.2rem] rounded-[16px] bg-[#1A2542] px-5 py-[1.125rem]">
+      <div className="flex items-center gap-2.5 text-[#6F88AF]">
+        <ActionGlyph name={icon} />
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#7A8FBA]">
+          {label}
+        </p>
+      </div>
+      <p
+        className={[
+          'mt-5 text-[1.95rem] font-semibold leading-none tracking-[-0.04em] text-[#F4F8FF]',
+          valueClassName ?? '',
+        ].join(' ')}
+      >
+        {value}
+      </p>
+      <p className="mt-2.5 text-[0.92rem] leading-6 text-[#8499BB]">{detail}</p>
+    </div>
+  );
+}
+
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'green' | 'yellow' | 'red' | 'neutral';
+}) {
+  const className = {
+    green: 'border-[#4ADE80]/30 bg-[#173126] text-[#4ADE80]',
+    yellow: 'border-[#FBBF24]/30 bg-[#362A14] text-[#FBBF24]',
+    red: 'border-[#F2A2A2]/28 bg-[#352126] text-[#F2A2A2]',
+    neutral: 'border-white/8 bg-[#1A2542] text-[#A7B7D6]',
   }[tone];
 
   return (
-    <article className={`rounded-2xl border p-4 ${toneClassName}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-white">{label}</h3>
-          <p className="mt-1 text-sm leading-6 text-current/85">{detail}</p>
-        </div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-current/75">
-          {formatShortDateTime(timestamp)}
-        </p>
-      </div>
-    </article>
-  );
-}
-
-type EmptyStateProps = {
-  children: string;
-};
-
-function EmptyState({ children }: EmptyStateProps) {
-  return (
-    <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm leading-6 text-slate-400">
-      {children}
+    <div className={`rounded-full border px-3.5 py-2 text-[0.88rem] font-semibold ${className}`}>
+      {label}
     </div>
   );
 }
 
-function formatShortDateTime(timestamp: number) {
+function SymptomRow({ entry }: { entry: SymptomCheckIn }) {
+  const labels = getSymptomLabels(entry);
+  const primaryLabel = labels[0] ?? 'Symptom entry';
+  const category = getSymptomCategory(entry);
+
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[16px] bg-[#1A2542] px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="truncate text-[1.02rem] font-semibold text-[#F4F8FF]">
+          {primaryLabel}
+        </p>
+        <p className="mt-1 text-[0.9rem] text-[#8FA4C8]">
+          {category} - {formatRelativeTime(entry.createdAt)}
+        </p>
+      </div>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#FBBF24]/25 bg-[#2B2A29] text-[0.88rem] font-semibold text-[#FBBF24]">
+        {entry.severity}
+      </div>
+    </div>
+  );
+}
+
+function buildPostureSegments(
+  overview: ReturnType<typeof useDashboardData>['latestDailyOverview'],
+) {
+  if (!overview?.hasPostureData) {
+    return [
+      { label: 'Good', widthPct: 0, colorClassName: 'bg-[#4ADE80]' },
+      { label: 'Fair', widthPct: 0, colorClassName: 'bg-[#FBBF24]' },
+      { label: 'Poor', widthPct: 0, colorClassName: 'bg-[#F87171]' },
+    ];
+  }
+
+  const good = overview.postureStates.find(
+    (entry) => entry.label === 'Good posture',
+  )?.sharePct ?? 0;
+  const fair =
+    overview.postureStates.find((entry) => entry.label === 'Mild slouch')
+      ?.sharePct ?? 0;
+  const poor =
+    overview.postureStates.find((entry) => entry.label === 'Deep slouch')
+      ?.sharePct ?? 0;
+
+  return [
+    { label: 'Good', widthPct: good, colorClassName: 'bg-[#4ADE80]' },
+    { label: 'Fair', widthPct: fair, colorClassName: 'bg-[#FBBF24]' },
+    { label: 'Poor', widthPct: poor, colorClassName: 'bg-[#F87171]' },
+  ];
+}
+
+function getPostureTone(score: number, hasData: boolean) {
+  if (!hasData) {
+    return {
+      label: 'Waiting',
+      pillTone: 'neutral' as const,
+      textClassName: 'text-[#EAF2FF]',
+    };
+  }
+
+  if (score >= 60) {
+    return {
+      label: 'Good',
+      pillTone: 'green' as const,
+      textClassName: 'text-[#4ADE80]',
+    };
+  }
+
+  if (score >= 35) {
+    return {
+      label: 'Fair',
+      pillTone: 'yellow' as const,
+      textClassName: 'text-[#FBBF24]',
+    };
+  }
+
+  return {
+    label: 'Focus',
+    pillTone: 'red' as const,
+    textClassName: 'text-[#D8C29C]',
+  };
+}
+
+function getLastStatusClassName(
+  lastStatus: string,
+  postureTone: ReturnType<typeof getPostureTone>,
+) {
+  if (lastStatus === 'Posture recorded') {
+    return 'font-medium text-[#D3DDED]';
+  }
+
+  if (lastStatus === 'No posture yet') {
+    return 'font-medium text-[#C5D1E4]';
+  }
+
+  return postureTone.textClassName;
+}
+
+function getGreetingHeading() {
+  const hour = new Date().getHours();
+
+  if (hour < 12) {
+    return 'Good morning';
+  }
+
+  if (hour < 18) {
+    return 'Good afternoon';
+  }
+
+  return 'Good evening';
+}
+
+function getSymptomLabels(entry: SymptomCheckIn) {
+  return [
+    ...entry.presetSymptoms.map((symptom) => getPresetSymptomLabel(symptom)),
+    ...entry.customSymptoms,
+  ];
+}
+
+function getSymptomCategory(entry: SymptomCheckIn) {
+  const firstPreset = entry.presetSymptoms[0];
+
+  if (!firstPreset) {
+    return 'Custom symptom';
+  }
+
+  const matchingGroup = symptomPresetGroups.find((group) =>
+    group.items.some((item) => item.id === firstPreset),
+  );
+
+  return matchingGroup?.title ?? 'Local symptom';
+}
+
+function formatLongDate(timestamp: number) {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(timestamp);
+}
+
+function formatMonthDay(timestamp: number) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
+  }).format(timestamp);
+}
+
+function formatShortTime(timestamp: number) {
+  return new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',
   }).format(timestamp);
 }
 
-function formatSecondsCompact(totalSeconds: number) {
+function formatRelativeTime(timestamp: number) {
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(Math.round(diffMs / 60000), 0);
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes || 1} min ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function formatHoursAndMinutes(totalSeconds: number) {
   if (totalSeconds <= 0) {
-    return '0s';
+    return '0m';
   }
 
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
 
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  }
+  return `${minutes}m`;
+}
 
-  return `${seconds}s`;
+function ActionGlyph({
+  name,
+}: {
+  name: 'pulse' | 'heart' | 'calendar' | 'clock' | 'status' | 'symptom' | 'break' | 'continue';
+}) {
+  const commonProps = {
+    className: 'h-4 w-4',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  switch (name) {
+    case 'pulse':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <path d="M4 12h4l2-5 4 10 2-5h4" />
+        </svg>
+      );
+    case 'heart':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <path d="M12 21c-4.6-3.2-8-6-8-10.4A4.6 4.6 0 0 1 8.6 6c1.5 0 2.8.7 3.4 1.9A3.8 3.8 0 0 1 15.4 6 4.6 4.6 0 0 1 20 10.6C20 15 16.6 17.8 12 21Z" />
+        </svg>
+      );
+    case 'calendar':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <path d="M7 3v4" />
+          <path d="M17 3v4" />
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+          <path d="M4 10h16" />
+        </svg>
+      );
+    case 'clock':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 8v4l3 2" />
+        </svg>
+      );
+    case 'status':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="m8.5 12 2.2 2.2 4.8-4.9" />
+        </svg>
+      );
+    case 'symptom':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <path d="M12 21c-4.6-3.2-8-6-8-10.4A4.6 4.6 0 0 1 8.6 6c1.5 0 2.8.7 3.4 1.9A3.8 3.8 0 0 1 15.4 6 4.6 4.6 0 0 1 20 10.6C20 15 16.6 17.8 12 21Z" />
+        </svg>
+      );
+    case 'break':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <path d="m5 15 4-4 3 3 7-7" />
+          <path d="M16 7h3v3" />
+        </svg>
+      );
+    case 'continue':
+      return (
+        <svg viewBox="0 0 24 24" {...commonProps}>
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 8v4" />
+          <path d="M12 12h3" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function DashboardLoadingState() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.82fr)_minmax(338px,1fr)]">
+        <div className="space-y-6">
+          <DashboardCard glow="blue" className="p-7 lg:p-8">
+            <div className="space-y-4">
+              <SkeletonBlock className="h-3.5 w-28" />
+              <SkeletonBlock className="h-12 w-72 max-w-full rounded-[18px]" />
+              <SkeletonBlock className="h-5 w-48 max-w-full" />
+            </div>
+          </DashboardCard>
+
+          <DashboardCard className="p-7 lg:p-8">
+            <div className="space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <SkeletonBlock className="h-8 w-52 rounded-[14px]" />
+                  <SkeletonBlock className="h-4 w-72 max-w-full" />
+                </div>
+                <SkeletonBlock className="h-4 w-16" />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="rounded-[16px] bg-[#1A2542] px-5 py-[1.125rem]"
+                  >
+                    <SkeletonBlock className="h-3.5 w-24" />
+                    <SkeletonBlock className="mt-5 h-8 w-28 rounded-[12px]" />
+                    <SkeletonBlock className="mt-3 h-4 w-40 max-w-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DashboardCard>
+
+          <div className="space-y-4">
+            <SkeletonBlock className="h-3.5 w-28" />
+            <div className="flex flex-wrap gap-3">
+              <SkeletonBlock className="h-14 w-52 rounded-[16px]" />
+              <SkeletonBlock className="h-14 w-44 rounded-[16px]" />
+              <SkeletonBlock className="h-14 w-40 rounded-[16px]" />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <DashboardCard key={index} className="p-6">
+              <div className="space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-3">
+                    <SkeletonBlock className="h-8 w-44 rounded-[14px]" />
+                    <SkeletonBlock className="h-4 w-40" />
+                  </div>
+                  <SkeletonBlock className="h-9 w-16 rounded-full" />
+                </div>
+                <SkeletonBlock className="h-3 w-full rounded-full" />
+                <SkeletonBlock className="h-20 w-full rounded-[16px]" />
+                <SkeletonBlock className="h-14 w-full rounded-[16px]" />
+              </div>
+            </DashboardCard>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }

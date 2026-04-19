@@ -1,6 +1,14 @@
-﻿import { getLatestCompletedSession, sortCompletedSessionsByEndedAtDesc } from '@/core/metrics/session-history';
+import {
+  getLatestCompletedSession,
+  sortCompletedSessionsByEndedAtDesc,
+} from '@/core/metrics/session-history';
 import { db } from '@/storage/db';
-import { defaultSettings } from '@/storage/repositories/settings.repository';
+import {
+  defaultSettings,
+  normalizeAppSettings,
+  saveAppSettings,
+} from '@/storage/repositories/settings.repository';
+import { normalizeCalibrationProfile } from '@/storage/repositories/calibration.repository';
 
 export type LocalDataSnapshot = {
   settingsCount: number;
@@ -9,9 +17,11 @@ export type LocalDataSnapshot = {
   completedSessionsCount: number;
   eventsCount: number;
   dailyMetricsCount: number;
-  sessionSamplesCount: number;
+  symptomCheckInsCount: number;
+  savedCustomSymptomsCount: number;
   latestCompletedSessionAt: number | null;
   latestEventAt: number | null;
+  latestSymptomCheckInAt: number | null;
 };
 
 export async function getLocalDataSnapshot(): Promise<LocalDataSnapshot> {
@@ -21,16 +31,20 @@ export async function getLocalDataSnapshot(): Promise<LocalDataSnapshot> {
     sessions,
     eventsCount,
     dailyMetricsCount,
-    sessionSamplesCount,
     latestEvent,
+    symptomCheckInsCount,
+    savedCustomSymptomsCount,
+    latestSymptomCheckIn,
   ] = await Promise.all([
     db.settings.count(),
     db.calibrationProfiles.count(),
     db.sessions.orderBy('startedAt').reverse().toArray(),
     db.events.count(),
     db.dailyMetrics.count(),
-    db.sessionSamples.count(),
     db.events.orderBy('timestamp').reverse().first(),
+    db.symptomCheckIns.count(),
+    db.savedCustomSymptoms.count(),
+    db.symptomCheckIns.orderBy('createdAt').reverse().first(),
   ]);
 
   const completedSessions = sortCompletedSessionsByEndedAtDesc(sessions);
@@ -43,42 +57,63 @@ export async function getLocalDataSnapshot(): Promise<LocalDataSnapshot> {
     completedSessionsCount: completedSessions.length,
     eventsCount,
     dailyMetricsCount,
-    sessionSamplesCount,
+    symptomCheckInsCount,
+    savedCustomSymptomsCount,
     latestCompletedSessionAt: latestCompletedSession?.endedAt ?? null,
     latestEventAt: latestEvent?.timestamp ?? null,
+    latestSymptomCheckInAt: latestSymptomCheckIn?.createdAt ?? null,
   };
 }
 
 export async function exportLocalData() {
-  const [settingsRecord, calibrationProfiles, sessions, dailyMetrics, events, sessionSamples] =
-    await Promise.all([
-      db.settings.get('app-settings'),
-      db.calibrationProfiles.orderBy('updatedAt').reverse().toArray(),
-      db.sessions.orderBy('startedAt').reverse().toArray(),
-      db.dailyMetrics.orderBy('dateKey').reverse().toArray(),
-      db.events.orderBy('timestamp').reverse().toArray(),
-      db.sessionSamples.orderBy('timestamp').reverse().toArray(),
-    ]);
-
-  return {
-    settings: settingsRecord?.value ?? null,
+  const [
+    settingsRecord,
     calibrationProfiles,
     sessions,
     dailyMetrics,
     events,
-    sessionSamples,
+    symptomCheckIns,
+    savedCustomSymptoms,
+  ] = await Promise.all([
+    db.settings.get('app-settings'),
+    db.calibrationProfiles.orderBy('updatedAt').reverse().toArray(),
+    db.sessions.orderBy('startedAt').reverse().toArray(),
+    db.dailyMetrics.orderBy('dateKey').reverse().toArray(),
+    db.events.orderBy('timestamp').reverse().toArray(),
+    db.symptomCheckIns.orderBy('createdAt').reverse().toArray(),
+    db.savedCustomSymptoms.orderBy('label').toArray(),
+  ]);
+
+  return {
+    settings: settingsRecord?.value
+      ? normalizeAppSettings(settingsRecord.value)
+      : null,
+    calibrationProfiles: calibrationProfiles
+      .map((profile) => normalizeCalibrationProfile(profile))
+      .filter(
+        (profile): profile is NonNullable<typeof profile> => profile !== null,
+      ),
+    sessions,
+    dailyMetrics,
+    events,
+    symptomCheckIns,
+    savedCustomSymptoms,
   };
 }
 
 export async function clearHistoryData() {
-  await db.transaction('rw', [db.sessions, db.events, db.dailyMetrics, db.sessionSamples], async () => {
-    await Promise.all([
-      db.sessions.clear(),
-      db.events.clear(),
-      db.dailyMetrics.clear(),
-      db.sessionSamples.clear(),
-    ]);
-  });
+  await db.transaction(
+    'rw',
+    [db.sessions, db.events, db.dailyMetrics, db.symptomCheckIns],
+    async () => {
+      await Promise.all([
+        db.sessions.clear(),
+        db.events.clear(),
+        db.dailyMetrics.clear(),
+        db.symptomCheckIns.clear(),
+      ]);
+    },
+  );
 }
 
 export async function resetCalibrationData() {
@@ -86,12 +121,7 @@ export async function resetCalibrationData() {
 }
 
 export async function resetSettingsToDefaults() {
-  await db.settings.put({
-    id: 'app-settings',
-    value: defaultSettings,
-  });
-
-  return defaultSettings;
+  return saveAppSettings(defaultSettings);
 }
 
 export async function clearAllLocalData() {
@@ -103,7 +133,8 @@ export async function clearAllLocalData() {
       db.sessions,
       db.events,
       db.dailyMetrics,
-      db.sessionSamples,
+      db.symptomCheckIns,
+      db.savedCustomSymptoms,
     ],
     async () => {
       await Promise.all([
@@ -112,7 +143,8 @@ export async function clearAllLocalData() {
         db.sessions.clear(),
         db.events.clear(),
         db.dailyMetrics.clear(),
-        db.sessionSamples.clear(),
+        db.symptomCheckIns.clear(),
+        db.savedCustomSymptoms.clear(),
       ]);
     },
   );

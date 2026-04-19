@@ -1,6 +1,7 @@
 import type { PoseFrame } from '@/types/domain';
 
 export type PoseWorkerBackend = 'wasm' | 'cpu';
+export type PoseModelVariant = 'lightning' | 'thunder';
 
 export type PoseWorkerPhase =
   | 'IDLE'

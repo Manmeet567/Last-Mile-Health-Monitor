@@ -1,9 +1,11 @@
-﻿import type {
+import type {
   AppSettings,
   CalibrationProfile,
   DailyMetrics,
   MonitoringSession,
   PostureEvent,
+  SavedCustomSymptom,
+  SymptomCheckIn,
 } from '@/types/domain';
 import { DB_NAME } from '@/storage/schema';
 
@@ -14,7 +16,8 @@ export type LocalDataExportInput = {
   sessions: MonitoringSession[];
   dailyMetrics: DailyMetrics[];
   events: PostureEvent[];
-  sessionSamples: Array<Record<string, unknown>>;
+  symptomCheckIns: SymptomCheckIn[];
+  savedCustomSymptoms: SavedCustomSymptom[];
 };
 
 export function createPrivacyExportDocument(input: LocalDataExportInput) {
@@ -22,7 +25,7 @@ export function createPrivacyExportDocument(input: LocalDataExportInput) {
     meta: {
       exportedAt: input.exportedAt,
       dbName: DB_NAME,
-      schemaVersion: 1,
+      schemaVersion: 3,
       privacyMode: 'local-only',
       recordCounts: {
         settings: input.settings ? 1 : 0,
@@ -30,7 +33,8 @@ export function createPrivacyExportDocument(input: LocalDataExportInput) {
         sessions: input.sessions.length,
         dailyMetrics: input.dailyMetrics.length,
         events: input.events.length,
-        sessionSamples: input.sessionSamples.length,
+        symptomCheckIns: input.symptomCheckIns.length,
+        savedCustomSymptoms: input.savedCustomSymptoms.length,
       },
     },
     settings: input.settings,
@@ -38,7 +42,8 @@ export function createPrivacyExportDocument(input: LocalDataExportInput) {
     sessions: input.sessions,
     dailyMetrics: input.dailyMetrics,
     events: input.events,
-    sessionSamples: input.sessionSamples,
+    symptomCheckIns: input.symptomCheckIns,
+    savedCustomSymptoms: input.savedCustomSymptoms,
   };
 }
 

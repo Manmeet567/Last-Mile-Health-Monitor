@@ -4,8 +4,10 @@ import type {
   DailyMetrics,
   MonitoringSession,
   PostureEvent,
+  SavedCustomSymptom,
+  SymptomCheckIn,
 } from '@/types/domain';
-import { DB_NAME, type SessionSample, type SettingsRecord } from '@/storage/schema';
+import { DB_NAME, type SettingsRecord } from '@/storage/schema';
 
 export class LastMileDatabase extends Dexie {
   settings!: Table<SettingsRecord, SettingsRecord['id']>;
@@ -13,7 +15,8 @@ export class LastMileDatabase extends Dexie {
   sessions!: Table<MonitoringSession, MonitoringSession['id']>;
   events!: Table<PostureEvent, PostureEvent['id']>;
   dailyMetrics!: Table<DailyMetrics, DailyMetrics['dateKey']>;
-  sessionSamples!: Table<SessionSample, SessionSample['id']>;
+  symptomCheckIns!: Table<SymptomCheckIn, SymptomCheckIn['id']>;
+  savedCustomSymptoms!: Table<SavedCustomSymptom, SavedCustomSymptom['id']>;
 
   constructor() {
     super(DB_NAME);
@@ -25,6 +28,26 @@ export class LastMileDatabase extends Dexie {
       events: 'id, timestamp, type',
       dailyMetrics: 'dateKey',
       sessionSamples: 'id, sessionId, timestamp',
+    });
+
+    this.version(2).stores({
+      settings: 'id',
+      calibrationProfiles: 'id, createdAt, updatedAt',
+      sessions: 'id, startedAt, endedAt',
+      events: 'id, timestamp, type',
+      dailyMetrics: 'dateKey',
+      sessionSamples: null,
+    });
+
+    this.version(3).stores({
+      settings: 'id',
+      calibrationProfiles: 'id, createdAt, updatedAt',
+      sessions: 'id, startedAt, endedAt',
+      events: 'id, timestamp, type',
+      dailyMetrics: 'dateKey',
+      sessionSamples: null,
+      symptomCheckIns: 'id, createdAt, dateKey',
+      savedCustomSymptoms: 'id, label, createdAt',
     });
   }
 }

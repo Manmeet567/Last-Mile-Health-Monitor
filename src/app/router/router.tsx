@@ -1,6 +1,17 @@
-﻿import { Suspense, lazy } from 'react';
-import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom';
+import { Suspense, lazy } from 'react';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  RouterProvider,
+} from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
+import { PageLoader } from '@/components/ui/page-loader';
+
+const OverviewPage = lazy(async () => {
+  const module = await import('@/pages/overview/overview-page');
+  return { default: module.OverviewPage };
+});
 
 const DashboardPage = lazy(async () => {
   const module = await import('@/pages/dashboard/dashboard-page');
@@ -12,6 +23,11 @@ const LiveMonitorPage = lazy(async () => {
   return { default: module.LiveMonitorPage };
 });
 
+const SymptomCheckInPage = lazy(async () => {
+  const module = await import('@/pages/symptom-check-in/symptom-check-in-page');
+  return { default: module.SymptomCheckInPage };
+});
+
 const OnboardingPage = lazy(async () => {
   const module = await import('@/pages/onboarding/onboarding-page');
   return { default: module.OnboardingPage };
@@ -20,6 +36,11 @@ const OnboardingPage = lazy(async () => {
 const HistoryPage = lazy(async () => {
   const module = await import('@/pages/history/history-page');
   return { default: module.HistoryPage };
+});
+
+const ProjectOverviewPage = lazy(async () => {
+  const module = await import('@/pages/project-overview/project-overview-page');
+  return { default: module.ProjectOverviewPage };
 });
 
 const SettingsPage = lazy(async () => {
@@ -45,11 +66,27 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <OverviewPage />,
+      },
+      {
+        path: 'dashboard',
         element: <DashboardPage />,
       },
       {
-        path: 'live-monitor',
+        path: 'posture',
         element: <LiveMonitorPage />,
+      },
+      {
+        path: 'live-monitor',
+        element: <Navigate to="/posture" replace />,
+      },
+      {
+        path: 'symptoms',
+        element: <SymptomCheckInPage />,
+      },
+      {
+        path: 'symptom-check-in',
+        element: <SymptomCheckInPage />,
       },
       {
         path: 'onboarding',
@@ -58,6 +95,10 @@ const router = createBrowserRouter([
       {
         path: 'history',
         element: <HistoryPage />,
+      },
+      {
+        path: 'project-overview',
+        element: <ProjectOverviewPage />,
       },
       {
         path: 'settings',
@@ -76,13 +117,5 @@ export function AppRouter() {
 }
 
 function RouteLoadingFallback() {
-  return (
-    <section className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-panel backdrop-blur">
-      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent-300">Loading</p>
-      <h1 className="mt-3 font-display text-2xl text-white">Preparing the next screen</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-        The app is loading the route-specific code for this part of the experience.
-      </p>
-    </section>
-  );
+  return <PageLoader />;
 }

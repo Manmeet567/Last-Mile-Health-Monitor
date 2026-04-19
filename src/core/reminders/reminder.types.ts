@@ -35,4 +35,6 @@ export type ReminderDecision = {
 export type ActiveReminder = ReminderDecision & {
   id: string;
   triggeredAt: number;
+  severity?: 'soft' | 'strong' | 'balanced';
+  autoDismissAt?: number;
 };

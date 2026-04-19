@@ -23,6 +23,19 @@ export type ConfidenceAssessment = {
   isPoseReliable: boolean;
 };
 
+export type FrameQualityState = 'GOOD' | 'LIMITED' | 'POOR';
+
+export type FrameQualityAssessment = {
+  state: FrameQualityState;
+  score: number;
+  hasHeadAndShoulders: boolean;
+  hasTorsoContext: boolean;
+  isCentered: boolean;
+  usableForClassification: boolean;
+  cautiousClassification: boolean;
+  guidanceMessage: string | null;
+};
+
 export type TorsoAnchors = {
   midShoulder: ProcessingPoint;
   midHip: ProcessingPoint;
@@ -53,4 +66,5 @@ export type ProcessedPoseFrame = {
   normalizedPose: NormalizedPoseFrame | null;
   features: PostureFeatures;
   stability: ProcessedPoseStability;
+  frameQuality: FrameQualityAssessment;
 };

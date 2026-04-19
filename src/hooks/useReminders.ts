@@ -1,16 +1,23 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ReminderSettings, PostureEvent } from '@/types/domain';
-import type { ActiveReminder, ReminderDecision, ReminderHistoryEntry } from '@/core/reminders/reminder.types';
-import { evaluateReminder } from '@/core/reminders/reminder-rules';
+import { useEffect, useRef, useState } from 'react';
 import { createEmptyDailyMetrics } from '@/core/metrics/session-aggregator';
+import type { ActiveReminder } from '@/core/reminders/reminder.types';
+import type { FrameQualityState } from '@/core/processing/processing.types';
+import {
+  advanceBehaviorEngine,
+  createBehaviorEngineState,
+  dismissBehaviorReminder,
+  materializeBehaviorContext,
+  materializeBehaviorMetrics,
+  type BehaviorEngineState,
+  LONG_AWAY_SESSION_END_MS,
+} from '@/features/posture/behavior-engine';
+import { buildSessionIntelligence } from '@/features/posture/session-intelligence';
 import { getDailyMetricsByDateKey, saveDailyMetrics } from '@/storage/repositories/daily-metrics.repository';
 import { savePostureEvents } from '@/storage/repositories/events.repository';
 import { toDateKey } from '@/utils/date';
-import type { LivePostureState } from '@/types/domain';
+import type { LivePostureState, PostureEvent, ReminderSettings } from '@/types/domain';
 
-const SITTING_STATES = new Set<LivePostureState>(['GOOD_POSTURE', 'MILD_SLOUCH', 'DEEP_SLOUCH', 'MOVING']);
-const SLOUCH_STATES = new Set<LivePostureState>(['MILD_SLOUCH', 'DEEP_SLOUCH']);
-const BREAK_STATES = new Set<LivePostureState>(['AWAY', 'NO_PERSON']);
+const AUTO_DISMISS_MS = 5_000;
 
 type UseRemindersOptions = {
   enabled: boolean;
@@ -18,24 +25,33 @@ type UseRemindersOptions = {
   postureState: LivePostureState;
   latestTimestamp: number | null;
   sessionId: string | null;
+  frameQualityState?: FrameQualityState;
 };
 
 export function useReminders(options: UseRemindersOptions) {
-  const { enabled, settings, postureState, latestTimestamp, sessionId } = options;
+  const {
+    enabled,
+    settings,
+    postureState,
+    latestTimestamp,
+    sessionId,
+    frameQualityState = 'GOOD',
+  } = options;
   const mountedRef = useRef(true);
-  const previousStateRef = useRef<LivePostureState>(postureState);
-  const currentSittingBoutStartedAtRef = useRef<number | null>(null);
-  const currentSlouchStartedAtRef = useRef<number | null>(null);
-  const lastBreakAtRef = useRef<number | null>(null);
-  const lastReminderAtRef = useRef<number | null>(null);
-  const reminderHistoryRef = useRef<ReminderHistoryEntry[]>([]);
+  const engineRef = useRef<BehaviorEngineState>(createBehaviorEngineState());
   const pendingReminderEventsRef = useRef<PostureEvent[]>([]);
   const persistInFlightRef = useRef(false);
-  const activeReminderRef = useRef<ActiveReminder | null>(null);
+  const pausedForLongAwayRef = useRef(false);
   const [activeReminder, setActiveReminder] = useState<ActiveReminder | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isPersisting, setIsPersisting] = useState(false);
-
+  const [error, setError] = useState<string | null>(null);
+  const [tickState, setTickState] = useState(() => ({
+    contextSnapshot: materializeBehaviorContext(engineRef.current, Date.now()),
+    sessionMetrics: materializeBehaviorMetrics(engineRef.current, Date.now()),
+    sessionSummary: buildSessionIntelligence(engineRef.current, Date.now()),
+    sessionEndAt: null as number | null,
+    sessionEligible: true,
+  }));
   useEffect(() => {
     mountedRef.current = true;
 
@@ -45,187 +61,116 @@ export function useReminders(options: UseRemindersOptions) {
     };
   }, []);
 
-  const contextSnapshot = useMemo(() => {
-    if (latestTimestamp === null) {
-      return {
-        sittingBoutDurationSec: 0,
-        slouchDurationSec: 0,
-        timeSinceLastBreakSec: null,
-        cooldownRemainingSec: 0,
-        lastReminderAt: lastReminderAtRef.current,
-      };
-    }
-
-    const sittingBoutDurationSec = currentSittingBoutStartedAtRef.current
-      ? Math.max(Math.round((latestTimestamp - currentSittingBoutStartedAtRef.current) / 1000), 0)
-      : 0;
-    const slouchDurationSec = currentSlouchStartedAtRef.current
-      ? Math.max(Math.round((latestTimestamp - currentSlouchStartedAtRef.current) / 1000), 0)
-      : 0;
-    const timeSinceLastBreakSec = lastBreakAtRef.current
-      ? Math.max(Math.round((latestTimestamp - lastBreakAtRef.current) / 1000), 0)
-      : null;
-    const cooldownRemainingSec = lastReminderAtRef.current
-      ? Math.max(
-          Math.round(
-            (lastReminderAtRef.current + settings.reminderCooldownMin * 60 * 1000 - latestTimestamp) / 1000,
-          ),
-          0,
-        )
-      : 0;
-
-    return {
-      sittingBoutDurationSec,
-      slouchDurationSec,
-      timeSinceLastBreakSec,
-      cooldownRemainingSec,
-      lastReminderAt: lastReminderAtRef.current,
-    };
-  }, [latestTimestamp, settings.reminderCooldownMin]);
-
-  useEffect(() => {
-    activeReminderRef.current = activeReminder;
-  }, [activeReminder]);
-
   useEffect(() => {
     if (!enabled || latestTimestamp === null) {
+      if (!enabled) {
+        engineRef.current = createBehaviorEngineState();
+        pausedForLongAwayRef.current = false;
+        if (mountedRef.current) {
+          setActiveReminder(null);
+          setTickState((current) => ({
+            ...current,
+            sessionEndAt: null,
+            sessionEligible: true,
+          }));
+        }
+      }
+
       void flushPendingReminderPersistence();
-      if (!enabled && mountedRef.current) {
-        setActiveReminder(null);
-      }
       return;
     }
 
-    updateReminderDurations(postureState, latestTimestamp);
-    void flushPendingReminderPersistence();
-
-    if (!settings.enabled) {
+    if (pausedForLongAwayRef.current && (postureState === 'AWAY' || postureState === 'NO_PERSON')) {
       if (mountedRef.current) {
-        setActiveReminder(null);
+        setTickState((current) => ({
+          ...current,
+          contextSnapshot: {
+            ...current.contextSnapshot,
+            awayDurationSec: Math.max(
+              current.contextSnapshot.awayDurationSec,
+              Math.round(LONG_AWAY_SESSION_END_MS / 1000),
+            ),
+          },
+          sessionEligible: false,
+        }));
       }
       return;
     }
 
-    if (shouldAutoClearReminder(postureState) && mountedRef.current) {
-      setActiveReminder(null);
+    if (pausedForLongAwayRef.current && postureState !== 'AWAY' && postureState !== 'NO_PERSON') {
+      pausedForLongAwayRef.current = false;
+      engineRef.current = createBehaviorEngineState();
     }
 
-    const sittingBoutDurationSec = currentSittingBoutStartedAtRef.current
-      ? Math.max(Math.round((latestTimestamp - currentSittingBoutStartedAtRef.current) / 1000), 0)
-      : 0;
-    const slouchDurationSec = currentSlouchStartedAtRef.current
-      ? Math.max(Math.round((latestTimestamp - currentSlouchStartedAtRef.current) / 1000), 0)
-      : 0;
-    const timeSinceLastBreakSec = lastBreakAtRef.current
-      ? Math.max(Math.round((latestTimestamp - lastBreakAtRef.current) / 1000), 0)
-      : null;
-    const timeSinceLastReminderSec = lastReminderAtRef.current
-      ? Math.max(Math.round((latestTimestamp - lastReminderAtRef.current) / 1000), 0)
-      : null;
-
-    reminderHistoryRef.current = reminderHistoryRef.current.filter(
-      (entry) => latestTimestamp - entry.timestamp <= 60 * 60 * 1000,
-    );
-
-    const decision = evaluateReminder({
-      currentState: postureState,
-      sittingBoutDurationSec,
-      slouchDurationSec,
-      timeSinceLastBreakSec,
-      timeSinceLastReminderSec,
-      recentReminderHistory: reminderHistoryRef.current,
-      now: latestTimestamp,
+    const result = advanceBehaviorEngine(engineRef.current, {
+      timestamp: latestTimestamp,
+      displayState: postureState,
+      frameQualityState,
       settings,
     });
 
-    if (!decision) {
+    engineRef.current = result.state;
+
+    if (mountedRef.current) {
+      setActiveReminder(result.state.activeReminder);
+      setTickState({
+        contextSnapshot: result.contextSnapshot,
+        sessionMetrics: result.metrics,
+        sessionSummary: buildSessionIntelligence(result.state, latestTimestamp),
+        sessionEndAt: result.shouldEndSession ? latestTimestamp : null,
+        sessionEligible: !result.shouldEndSession,
+      });
+    }
+
+    if (result.shouldEndSession) {
+      pausedForLongAwayRef.current = true;
+      engineRef.current = createBehaviorEngineState();
+      if (mountedRef.current) {
+        setActiveReminder(null);
+      }
+    }
+
+    if (result.triggeredReminder) {
+      pendingReminderEventsRef.current.push(
+        createReminderEvent({
+          reminder: result.triggeredReminder,
+          timestamp: result.triggeredReminder.triggeredAt,
+          sessionId,
+        }),
+      );
+      void flushPendingReminderPersistence();
+    }
+  }, [enabled, frameQualityState, latestTimestamp, postureState, sessionId, settings]);
+
+  useEffect(() => {
+    if (!activeReminder) {
       return;
     }
 
-    if (activeReminderRef.current && activeReminderRef.current.type === decision.type) {
-      return;
-    }
+    const timeoutId = window.setTimeout(() => {
+      dismissReminder();
+    }, AUTO_DISMISS_MS);
 
-    triggerReminder(decision, latestTimestamp);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, latestTimestamp, postureState, settings]);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeReminder]);
 
   return {
     activeReminder,
     dismissReminder,
-    contextSnapshot,
+    contextSnapshot: tickState.contextSnapshot,
+    sessionMetrics: tickState.sessionMetrics,
+    sessionSummary: tickState.sessionSummary,
+    sessionEndAt: tickState.sessionEndAt,
+    sessionEligible: tickState.sessionEligible,
     isPersisting,
     error,
   };
 
-  function updateReminderDurations(nextState: LivePostureState, timestamp: number) {
-    const previousState = previousStateRef.current;
-
-    if (!SITTING_STATES.has(previousState) && SITTING_STATES.has(nextState)) {
-      currentSittingBoutStartedAtRef.current = timestamp;
-    }
-
-    if (SITTING_STATES.has(previousState) && !SITTING_STATES.has(nextState)) {
-      currentSittingBoutStartedAtRef.current = null;
-    }
-
-    if (!SLOUCH_STATES.has(previousState) && SLOUCH_STATES.has(nextState)) {
-      currentSlouchStartedAtRef.current = timestamp;
-    }
-
-    if (SLOUCH_STATES.has(previousState) && !SLOUCH_STATES.has(nextState)) {
-      currentSlouchStartedAtRef.current = null;
-    }
-
-    if (BREAK_STATES.has(previousState) && !BREAK_STATES.has(nextState)) {
-      lastBreakAtRef.current = timestamp;
-    }
-
-    if (previousState === nextState) {
-      if (currentSittingBoutStartedAtRef.current === null && SITTING_STATES.has(nextState)) {
-        currentSittingBoutStartedAtRef.current = timestamp;
-      }
-
-      if (currentSlouchStartedAtRef.current === null && SLOUCH_STATES.has(nextState)) {
-        currentSlouchStartedAtRef.current = timestamp;
-      }
-    }
-
-    previousStateRef.current = nextState;
-  }
-
-  function triggerReminder(decision: ReminderDecision, triggeredAt: number) {
-    const reminderId = `reminder-${decision.type.toLowerCase()}-${triggeredAt}`;
-    const nextReminder: ActiveReminder = {
-      ...decision,
-      id: reminderId,
-      triggeredAt,
-    };
-
-    if (mountedRef.current) {
-      setActiveReminder(nextReminder);
-    }
-    lastReminderAtRef.current = triggeredAt;
-    reminderHistoryRef.current = [
-      ...reminderHistoryRef.current,
-      {
-        type: decision.type,
-        timestamp: triggeredAt,
-      },
-    ].slice(-12);
-
-    pendingReminderEventsRef.current.push(
-      createReminderEvent({
-        reminder: nextReminder,
-        timestamp: triggeredAt,
-        sessionId,
-      }),
-    );
-
-    void flushPendingReminderPersistence();
-  }
-
   function dismissReminder() {
+    engineRef.current = dismissBehaviorReminder(engineRef.current);
+
     if (mountedRef.current) {
       setActiveReminder(null);
     }
@@ -264,7 +209,11 @@ export function useReminders(options: UseRemindersOptions) {
       }
     } catch (nextError) {
       if (mountedRef.current) {
-        setError(nextError instanceof Error ? nextError.message : 'Unable to persist reminder activity locally.');
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : 'Unable to persist local nudge activity.',
+        );
       }
     } finally {
       persistInFlightRef.current = false;
@@ -289,6 +238,8 @@ function createReminderEvent(options: {
     metadata: {
       reminderType: reminder.type,
       title: reminder.title,
+      message: reminder.message,
+      severity: reminder.severity ?? 'balanced',
       currentState: reminder.context.currentState,
       sittingBoutDurationSec: reminder.context.sittingBoutDurationSec,
       slouchDurationSec: reminder.context.slouchDurationSec,
@@ -296,14 +247,4 @@ function createReminderEvent(options: {
       sessionId,
     },
   };
-}
-
-function shouldAutoClearReminder(state: LivePostureState) {
-  return (
-    state === 'GOOD_POSTURE' ||
-    state === 'DETECTING' ||
-    state === 'AWAY' ||
-    state === 'NO_PERSON' ||
-    state === 'MOVING'
-  );
 }

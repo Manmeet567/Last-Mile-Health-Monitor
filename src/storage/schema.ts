@@ -1,10 +1,11 @@
-﻿import type {
+import type {
   AppSettings,
   CalibrationProfile,
   DailyMetrics,
-  LivePostureState,
   MonitoringSession,
   PostureEvent,
+  SavedCustomSymptom,
+  SymptomCheckIn,
 } from '@/types/domain';
 
 export const DB_NAME = 'lastMileHealthMonitorDB';
@@ -14,18 +15,12 @@ export type SettingsRecord = {
   value: AppSettings;
 };
 
-export type SessionSample = {
-  id: string;
-  sessionId: string;
-  timestamp: number;
-  postureState: LivePostureState;
-};
-
 export type LastMileTables = {
   settings: SettingsRecord;
   calibrationProfiles: CalibrationProfile;
   sessions: MonitoringSession;
   events: PostureEvent;
   dailyMetrics: DailyMetrics;
-  sessionSamples: SessionSample;
+  symptomCheckIns: SymptomCheckIn;
+  savedCustomSymptoms: SavedCustomSymptom;
 };

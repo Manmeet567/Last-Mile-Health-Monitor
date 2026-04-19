@@ -48,6 +48,7 @@ export function useLivePostureState(
         calibrationProfile,
         signalQuality: processedPose.stability.signalQuality,
         signalDropoutDurationMs: processedPose.stability.dropoutDurationMs,
+        frameQuality: processedPose.frameQuality,
       },
       previousSnapshot: runtimeSnapshotRef.current,
     });

@@ -21,19 +21,27 @@ export type RuntimeStatus = {
   storageQuotaBytes: number | null;
 };
 
-type PrivacyAction = 'export' | 'clear-history' | 'reset-calibration' | 'reset-settings' | 'clear-all' | null;
+type PrivacyAction =
+  | 'export'
+  | 'clear-history'
+  | 'reset-calibration'
+  | 'reset-settings'
+  | 'clear-all'
+  | null;
 
 const initialRuntimeStatus: RuntimeStatus = {
   isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
   isStandalone: false,
-  serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+  serviceWorkerSupported:
+    typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
   storageEstimateBytes: null,
   storageQuotaBytes: null,
 };
 
 export function usePrivacyControls() {
   const [snapshot, setSnapshot] = useState<LocalDataSnapshot | null>(null);
-  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>(initialRuntimeStatus);
+  const [runtimeStatus, setRuntimeStatus] =
+    useState<RuntimeStatus>(initialRuntimeStatus);
   const [isLoading, setIsLoading] = useState(true);
   const [activeAction, setActiveAction] = useState<PrivacyAction>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -77,7 +85,11 @@ export function usePrivacyControls() {
       setSnapshot(nextSnapshot);
       setError(null);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to read local data status.');
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : 'Unable to read local data status.',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -88,8 +100,10 @@ export function usePrivacyControls() {
       const nextRuntimeStatus: RuntimeStatus = {
         isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
         isStandalone:
-          typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches,
-        serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+          typeof window !== 'undefined' &&
+          window.matchMedia('(display-mode: standalone)').matches,
+        serviceWorkerSupported:
+          typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
         storageEstimateBytes: null,
         storageQuotaBytes: null,
       };
@@ -106,13 +120,19 @@ export function usePrivacyControls() {
         ...currentStatus,
         isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
         isStandalone:
-          typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches,
-        serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+          typeof window !== 'undefined' &&
+          window.matchMedia('(display-mode: standalone)').matches,
+        serviceWorkerSupported:
+          typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
       }));
     }
   }
 
-  async function runAction(action: Exclude<PrivacyAction, null>, task: () => Promise<void>, successMessage: string) {
+  async function runAction(
+    action: Exclude<PrivacyAction, null>,
+    task: () => Promise<void>,
+    successMessage: string,
+  ) {
     setActiveAction(action);
     setMessage(null);
     setError(null);
@@ -123,7 +143,11 @@ export function usePrivacyControls() {
       await refreshRuntimeStatus();
       setMessage(successMessage);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'This privacy action could not be completed.');
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : 'This privacy action could not be completed.',
+      );
     } finally {
       setActiveAction(null);
     }
@@ -151,7 +175,7 @@ export function usePrivacyControls() {
       async () => {
         await clearHistoryData();
       },
-      'Local history cleared. Settings and calibration were kept.',
+      'Local history cleared. Settings, calibration, and reusable custom symptom labels were kept.',
     );
   }
 

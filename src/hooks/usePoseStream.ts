@@ -1,8 +1,8 @@
 import { startTransition, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
-  DEFAULT_MIN_POSE_SCORE,
   DEFAULT_TARGET_INFERENCE_FPS,
-  MOVENET_MODEL_NAME,
+  MOVENET_MODEL_NAMES,
+  resolvePoseModelVariant,
 } from '@/core/inference/inference.constants';
 import { shouldScheduleInferenceFrame } from '@/core/inference/frame-scheduler';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/core/inference/worker-display-state';
 import type {
   PoseInferenceSnapshot,
+  PoseModelVariant,
   PoseWorkerBackend,
   PoseWorkerLifecycle,
   PoseWorkerPhase,
@@ -31,6 +32,7 @@ type UsePoseStreamOptions = {
   enabled: boolean;
   targetFps?: number;
   preferredBackend?: PoseWorkerBackend;
+  preferredModelVariant?: PoseModelVariant;
 };
 
 type E2EPoseStreamConfig = {
@@ -43,8 +45,15 @@ export function usePoseStream(
   videoRef: RefObject<HTMLVideoElement | null>,
   options: UsePoseStreamOptions,
 ) {
-  const { enabled, targetFps = DEFAULT_TARGET_INFERENCE_FPS, preferredBackend = 'wasm' } = options;
+  const {
+    enabled,
+    targetFps = DEFAULT_TARGET_INFERENCE_FPS,
+    preferredBackend = 'wasm',
+    preferredModelVariant = 'lightning',
+  } = options;
   const mockPoseStreamConfig = getMockPoseStreamConfig();
+  const resolvedModelVariant = resolvePoseModelVariant(preferredModelVariant);
+  const defaultModelName = MOVENET_MODEL_NAMES[resolvedModelVariant];
   const workerRef = useRef<Worker | null>(null);
   const frameRequestRef = useRef<number | null>(null);
   const frameIdRef = useRef(0);
@@ -69,7 +78,7 @@ export function usePoseStream(
         phase: 'READY',
         backend,
         error: null,
-        modelName: MOVENET_MODEL_NAME,
+        modelName: defaultModelName,
         lastUpdatedAt: Date.now(),
       });
 
@@ -89,7 +98,7 @@ export function usePoseStream(
           phase: 'READY',
           backend: frame.backend,
           error: null,
-          modelName: MOVENET_MODEL_NAME,
+          modelName: defaultModelName,
           lastUpdatedAt: Date.now(),
         });
       };
@@ -179,7 +188,7 @@ export function usePoseStream(
             lifecycle: 'running',
             phase: 'READY',
             backend: message.payload.backend,
-            modelName: workerStateRef.current.modelName || MOVENET_MODEL_NAME,
+            modelName: workerStateRef.current.modelName || defaultModelName,
             error: null,
             lastUpdatedAt: Date.now(),
           });
@@ -193,7 +202,7 @@ export function usePoseStream(
           lifecycle: 'error',
           phase: 'ERROR',
           backend: workerStateRef.current.backend,
-          modelName: workerStateRef.current.modelName || MOVENET_MODEL_NAME,
+          modelName: workerStateRef.current.modelName || defaultModelName,
           error: message.payload.message,
           lastUpdatedAt: Date.now(),
         });
@@ -206,7 +215,7 @@ export function usePoseStream(
         lifecycle: 'error',
         phase: 'ERROR',
         backend: workerStateRef.current.backend,
-        modelName: workerStateRef.current.modelName || MOVENET_MODEL_NAME,
+        modelName: workerStateRef.current.modelName || defaultModelName,
         error: event.message || 'The inference worker crashed unexpectedly.',
         lastUpdatedAt: Date.now(),
       });
@@ -214,7 +223,10 @@ export function usePoseStream(
 
     nextWorker.postMessage({
       type: 'INIT',
-      payload: { preferredBackend },
+      payload: {
+        preferredBackend,
+        modelVariant: resolvedModelVariant,
+      },
     } satisfies PoseWorkerRequest);
 
     return () => {
@@ -227,7 +239,7 @@ export function usePoseStream(
       workerRef.current = null;
       inFlightFrameRef.current = false;
     };
-  }, [enabled, mockPoseStreamConfig, preferredBackend]);
+  }, [defaultModelName, enabled, mockPoseStreamConfig, preferredBackend, resolvedModelVariant]);
 
   useEffect(() => {
     if (mockPoseStreamConfig) {
@@ -329,7 +341,6 @@ export function usePoseStream(
     workerDisplayState,
     latestPose,
     hasPose: latestPose !== null && latestPose.keypoints.length > 0,
-    confidenceThreshold: DEFAULT_MIN_POSE_SCORE,
   };
 
   function updateWorkerState(nextState: PoseWorkerState) {

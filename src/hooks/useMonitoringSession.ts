@@ -19,6 +19,7 @@ import {
   saveMonitoringSession,
 } from '@/storage/repositories/sessions.repository';
 import { toDateKey } from '@/utils/date';
+import type { SessionIntelligenceSummary } from '@/features/posture/session-intelligence';
 
 const SESSION_SYNC_INTERVAL_MS = 5_000;
 
@@ -26,16 +27,28 @@ type UseMonitoringSessionOptions = {
   enabled: boolean;
   postureSnapshot: PostureStateSnapshot;
   latestTimestamp: number | null;
+  sessionEligible?: boolean;
+  sessionEndAt?: number | null;
+  sessionSummary?: SessionIntelligenceSummary | null;
 };
 
 export function useMonitoringSession(options: UseMonitoringSessionOptions) {
-  const { enabled, postureSnapshot, latestTimestamp } = options;
+  const {
+    enabled,
+    postureSnapshot,
+    latestTimestamp,
+    sessionEligible = true,
+    sessionEndAt = null,
+    sessionSummary = null,
+  } = options;
   const accumulatorRef = useRef<SessionAccumulator | null>(null);
   const isStartingRef = useRef(false);
   const isFinalizingRef = useRef(false);
   const isPersistingEventsRef = useRef(false);
   const pendingEventsRef = useRef<PostureEvent[]>([]);
   const persistedEventIdsRef = useRef(new Set<string>());
+  const handledSessionEndAtRef = useRef<number | null>(null);
+  const sessionSummaryRef = useRef<SessionIntelligenceSummary | null>(sessionSummary);
   const mountedRef = useRef(true);
   const [state, setState] = useState<MetricsSnapshot>({
     activeSession: null,
@@ -44,6 +57,10 @@ export function useMonitoringSession(options: UseMonitoringSessionOptions) {
     isPersisting: false,
     error: null,
   });
+
+  useEffect(() => {
+    sessionSummaryRef.current = sessionSummary;
+  }, [sessionSummary]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -57,24 +74,41 @@ export function useMonitoringSession(options: UseMonitoringSessionOptions) {
   useEffect(() => {
     if (!enabled) {
       if (accumulatorRef.current) {
-        void finalizeActiveSession(Date.now());
+        void finalizeActiveSession(Date.now(), sessionSummary);
       }
       return;
     }
 
-    if (latestTimestamp === null) {
+    if (latestTimestamp === null || !sessionEligible) {
       return;
     }
 
     if (!accumulatorRef.current && !isStartingRef.current) {
       void startSession(latestTimestamp, postureSnapshot.state);
     }
-  }, [enabled, latestTimestamp, postureSnapshot.state]);
+  }, [enabled, latestTimestamp, postureSnapshot.state, sessionEligible, sessionSummary]);
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      !accumulatorRef.current ||
+      sessionEndAt === null ||
+      handledSessionEndAtRef.current === sessionEndAt
+    ) {
+      return;
+    }
+
+    handledSessionEndAtRef.current = sessionEndAt;
+    void finalizeActiveSession(sessionEndAt, sessionSummary);
+  }, [enabled, sessionEndAt, sessionSummary]);
 
   useEffect(() => {
     return () => {
       if (accumulatorRef.current) {
-        void finalizeActiveSession(accumulatorRef.current.lastProcessedAt || Date.now());
+        void finalizeActiveSession(
+          accumulatorRef.current.lastProcessedAt || Date.now(),
+          sessionSummaryRef.current,
+        );
       }
     };
   }, []);
@@ -154,6 +188,7 @@ export function useMonitoringSession(options: UseMonitoringSessionOptions) {
 
   async function startSession(startedAt: number, initialState: PostureStateSnapshot['state']) {
     isStartingRef.current = true;
+    handledSessionEndAtRef.current = null;
     const sessionId = `session-${startedAt}`;
     const accumulator = createSessionAccumulator(sessionId, startedAt, initialState);
     accumulatorRef.current = accumulator;
@@ -259,7 +294,10 @@ export function useMonitoringSession(options: UseMonitoringSessionOptions) {
     }
   }
 
-  async function finalizeActiveSession(endedAt: number) {
+  async function finalizeActiveSession(
+    endedAt: number,
+    nextSessionSummary: SessionIntelligenceSummary | null,
+  ) {
     const accumulator = accumulatorRef.current;
     if (!accumulator || isFinalizingRef.current) {
       return;
@@ -269,7 +307,10 @@ export function useMonitoringSession(options: UseMonitoringSessionOptions) {
     accumulatorRef.current = null;
 
     const finalizedAccumulator = finalizeSessionAccumulator(accumulator, endedAt);
-    const finalizedSession = materializeMonitoringSession(finalizedAccumulator, endedAt, endedAt);
+    const finalizedSession = enrichMonitoringSession(
+      materializeMonitoringSession(finalizedAccumulator, endedAt, endedAt),
+      nextSessionSummary,
+    );
     const endedEvent = createSessionLifecycleEvent({
       sessionId: finalizedSession.id,
       timestamp: endedAt,
@@ -342,5 +383,29 @@ export function useMonitoringSession(options: UseMonitoringSessionOptions) {
       }
     }
   }
+}
+
+function enrichMonitoringSession(
+  session: MonitoringSession,
+  summary: SessionIntelligenceSummary | null,
+): MonitoringSession {
+  if (!summary) {
+    return session;
+  }
+
+  return {
+    ...session,
+    durationMs: summary.durationMs,
+    goodPostureMs: summary.goodPostureMs,
+    slouchMs: summary.slouchMs,
+    breakCount: summary.breakCount,
+    nudgeCount: summary.nudgeCount,
+    longestSlouchStreakMs: summary.longestSlouchStreakMs,
+    goodPosturePercent: summary.goodPosturePercent,
+    sessionScoreLabel: summary.sessionScoreLabel,
+    insights: summary.insights,
+    reflectionLine: summary.reflectionLine,
+    recoverySuggestion: summary.recoverySuggestion,
+  };
 }
 

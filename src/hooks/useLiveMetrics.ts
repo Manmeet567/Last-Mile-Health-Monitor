@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { computePostureFeatures } from '@/core/posture/posture-features';
 import { assessPoseConfidence } from '@/core/processing/confidence-gating';
+import { assessFrameQuality } from '@/core/processing/frame-quality';
 import { normalizePoseFrame } from '@/core/processing/keypoint-normalizer';
 import { PoseSignalSmoother } from '@/core/processing/temporal-filter';
 import type { NormalizedPoseFrame, ProcessedPoseFrame } from '@/core/processing/processing.types';
@@ -32,6 +33,7 @@ export function useLiveMetrics(pose: PoseFrame | null) {
       pose.overallScore,
       confidence.reliableKeypoints,
     );
+    const frameQuality = assessFrameQuality(pose, confidence);
 
     if (!confidence.isPoseReliable || !normalizedPose) {
       const lastReliableFrame = lastReliableFrameRef.current;
@@ -58,6 +60,7 @@ export function useLiveMetrics(pose: PoseFrame | null) {
             dropoutDurationMs,
             graceWindowMs: SIGNAL_GRACE_WINDOW_MS,
           },
+          frameQuality,
         });
         return;
       }
@@ -78,6 +81,7 @@ export function useLiveMetrics(pose: PoseFrame | null) {
           dropoutDurationMs,
           graceWindowMs: SIGNAL_GRACE_WINDOW_MS,
         },
+        frameQuality,
       });
       return;
     }
@@ -102,6 +106,7 @@ export function useLiveMetrics(pose: PoseFrame | null) {
         dropoutDurationMs: 0,
         graceWindowMs: SIGNAL_GRACE_WINDOW_MS,
       },
+      frameQuality,
     };
 
     setProcessedPose(nextProcessedPose);
