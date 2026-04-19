@@ -1,44 +1,78 @@
-# Last Mile Health Monitor
+# Last Mile
 
-Last Mile Health Monitor is a local-first posture and break-awareness web app built for desk use. It uses webcam-based pose estimation in the browser to monitor posture, calibrate to the user, surface live feedback, log monitoring sessions, and show local history without sending camera data to a backend.
+Last Mile is a privacy-first, local-only desk-health companion built for the **MeDo hackathon**. It combines browser-based posture tracking, local symptom check-ins, combined history review, and calm session summaries so users can understand how desk sessions are going without sending camera or health data to a backend.
 
-## What It Does
+## Product Summary
 
-- runs webcam-based posture monitoring directly in the browser
-- uses TensorFlow.js MoveNet in a worker for pose inference
-- calibrates thresholds to the current user instead of relying on fixed defaults
-- classifies posture states such as `GOOD_POSTURE`, `MILD_SLOUCH`, `DEEP_SLOUCH`, `AWAY`, and `NO_PERSON`
-- tracks sessions, daily rollups, events, and reminders in IndexedDB
-- shows a live monitor, onboarding flow, dashboard, history, settings, and privacy/data controls
-- keeps camera processing local to the device
+Last Mile currently focuses on:
 
-## Core Features
+- webcam-based posture tracking in the browser
+- stabilized posture feedback for a front-facing desk setup
+- calm nudges and break detection during live sessions
+- local symptom check-ins and symptom history
+- combined posture + symptom history by local day
+- completed-session summaries with:
+  - label-only session quality
+  - up to 2 short insights
+  - 1 reflection line
+  - 1 recovery suggestion
 
-### Live monitor
+Current product boundaries:
 
-- camera start/stop and device switching
-- live posture state with calmer displayed-state behavior
-- reminder banners for posture, break, and recovery nudges
-- inference/debug panels for keypoints, thresholds, signal quality, and runtime state
+- all core logic stays local in the browser
+- there is no application backend
+- there is no medical diagnosis or predictive medical behavior
+- there is no MeDo integration in the current implementation
 
-### Calibration
+## Current UI
 
-- onboarding flow for collecting baseline posture samples
-- user-specific thresholds for slouch and head offset
-- persisted calibration profile in IndexedDB
+The app uses a premium dark desktop-first shell with responsive mobile support.
 
-### Analytics and history
+Main sections:
 
-- local monitoring sessions and posture-event logging
-- daily rollups and cross-midnight aggregation by the browser user's local calendar day
-- dashboard summaries and trends
-- history page for saved sessions and event timelines
+- `Overview`
+- `Posture`
+- `Symptoms`
+- `History`
+- `Project Overview`
 
-### Privacy and control
+Utility pages:
 
-- local JSON export
-- clear history, reset calibration, and reset settings
-- storage usage snapshot and local data visibility
+- `Onboarding`
+- `Settings`
+- `Privacy`
+
+## Core Runtime Architecture
+
+The main posture flow is:
+
+`camera -> browser worker -> MoveNet -> posture features -> rule-based classification -> stabilized displayed state -> behavior engine -> session intelligence -> IndexedDB -> UI`
+
+Key runtime layers:
+
+- **Pose inference:** TensorFlow.js + MoveNet in a browser worker
+- **Posture processing:** rule-based seated-posture classification for front-facing webcam use
+- **Stabilization:** separates raw/runtime posture from calmer displayed posture
+- **Frame quality gating:** avoids misleading posture labels when the user is not well framed
+- **Behavior engine:** tracks slouch duration, nudges, breaks, and live session metrics
+- **Session intelligence:** converts live behavior into compact session summaries, insights, reflection, and recovery text
+- **Persistence:** Dexie / IndexedDB for all app data
+
+## Implemented Milestones
+
+- **Phase 0:** cleanup and stabilization complete
+- **Milestone 1:** complete
+  - symptom input
+  - symptom history and summaries
+  - combined daily posture + symptom view
+  - history filters and persistence
+- **Milestone 2:** complete
+  - pose stabilization
+  - seated-posture accuracy upgrade
+- **Milestone 3 through Phase 3.3:** complete
+  - smart breaks and nudges
+  - session intelligence and insight layer
+  - session reflection and recovery layer
 
 ## Tech Stack
 
@@ -47,49 +81,43 @@ Last Mile Health Monitor is a local-first posture and break-awareness web app bu
 - `Vite`
 - `React Router`
 - `Tailwind CSS`
-- `TensorFlow.js` + `@tensorflow-models/pose-detection`
+- `TensorFlow.js`
+- `@tensorflow-models/pose-detection` / MoveNet
 - `Dexie` / IndexedDB
-- `Zod`
 - `React Hook Form`
+- `Zod`
 - `Vitest` + React Testing Library
 - `Playwright`
 - `vite-plugin-pwa`
-- `Firebase Hosting` config is included for static deployment
 
-## App Routes
+The repo also includes Firebase Hosting config for static deployment.
 
-- `/` dashboard
-- `/live-monitor` live posture monitoring
+## Routes
+
+- `/` overview landing page
+- `/dashboard` dashboard summary page
+- `/live-monitor` posture page
+- `/symptom-check-in` symptoms page
+- `/history` history and review
+- `/project-overview` product overview
 - `/onboarding` calibration flow
-- `/history` session history and trends
-- `/settings` reminder and app settings
-- `/privacy` export and local data controls
+- `/settings` reminder settings
+- `/privacy` local data controls
 
 ## Project Structure
 
 ```text
 src/
-  app/                  app shell, router, store scaffold
-  components/           UI building blocks
-  core/                 posture, inference, reminders, metrics, history logic
-  hooks/                camera, pose stream, calibration, reminders, sessions
+  app/                  app shell and router
+  components/           reusable UI pieces
+  core/                 posture, inference, history, reminders, metrics
+  features/             higher-level runtime feature modules
+  hooks/                React integration for camera, pose, reminders, sessions
   pages/                route screens
   storage/              Dexie schema and repositories
   test/                 Vitest coverage
 tests/                  Playwright browser tests
 ```
-
-## Local-First Architecture
-
-The main runtime flow is:
-
-`camera stream -> video element -> createImageBitmap -> worker -> MoveNet inference -> confidence gating -> normalization -> smoothing -> feature extraction -> posture state machine -> displayed posture state -> reminders/session metrics -> IndexedDB -> dashboard/history/privacy UI`
-
-Important privacy characteristic:
-
-- camera frames and pose processing stay in the browser
-- app data is stored locally in IndexedDB
-- there is no server-side persistence in the current implementation
 
 ## Getting Started
 
@@ -97,7 +125,7 @@ Important privacy characteristic:
 
 - `Node.js 20+` recommended
 - `npm`
-- a modern Chromium-based browser is recommended for the live monitor
+- a modern Chromium-based browser for the live posture flow
 
 ### Install
 
@@ -105,7 +133,7 @@ Important privacy characteristic:
 npm install
 ```
 
-### Run the app
+### Run locally
 
 ```bash
 npm run dev
@@ -113,23 +141,23 @@ npm run dev
 
 Open the local Vite URL in your browser and allow camera access when prompted.
 
-### Build for production
+### Build
 
 ```bash
 npm run build
 ```
 
-### Preview the production build
+### Preview production build
 
 ```bash
 npm run preview
 ```
 
-## Available Scripts
+## Scripts
 
 - `npm run dev` starts the Vite dev server
-- `npm run build` runs TypeScript build mode and creates the production bundle
-- `npm run preview` serves the production build locally
+- `npm run build` builds the app for production
+- `npm run preview` previews the production build
 - `npm run lint` runs ESLint
 - `npm run lint:fix` runs ESLint with autofix
 - `npm run format` formats the repo with Prettier
@@ -138,15 +166,9 @@ npm run preview
 - `npm run test:watch` runs Vitest in watch mode
 - `npm run test:e2e` runs Playwright browser tests
 
-## Testing
+## Verification
 
-Current automated coverage includes:
-
-- Vitest logic and UI coverage for processing, calibration, state machine behavior, reminders, privacy, selectors, and app shell behavior
-- Playwright route smoke coverage
-- Playwright live-monitor browser coverage with mocked camera and mocked pose input
-
-Current verification commands:
+Current standard verification commands:
 
 ```bash
 npm run lint
@@ -166,38 +188,32 @@ npm run build
 firebase deploy
 ```
 
-If you publish this to Firebase Hosting, make sure the Firebase project is initialized for this repo first.
-
-## Current Status
-
-The milestone roadmap defined in the planning documents is implemented through Milestone 9. After roadmap completion, the project also received several hardening passes:
-
-- bundle reduction through route lazy loading and chunk splitting
-- cross-midnight daily aggregation
-- PWA dev-warning cleanup
-- live-monitor runtime stabilization
-- mocked browser automation for the live-monitor flow
-
-For the detailed verified state of the repo, see [`last-mile-project-status.md`](./last-mile-project-status.md).
-
 ## Known Limitations
 
-- there is no real hardware-webcam end-to-end test yet; the live-monitor browser test uses mocked media input
-- reminder recovery history is not persisted across full app restarts
+- live-monitor browser automation still uses mocked media input and mocked pose frames
+- there is no real hardware-webcam automated end-to-end test yet
 - privacy export is JSON-only
-- the Zustand store is mostly a scaffold, not the main application-state layer
-- this workspace is not currently a Git repository, so Husky hooks are not active until Git is initialized
+- reminder recovery history is not persisted across full app restarts
+- the Zustand store is still minimal scaffolding rather than the main state layer
+- all posture/session/symptom intelligence remains descriptive only, not medical or predictive
 
-## Notes for Contributors
+## Contributor Notes
 
-- the project is local-first and browser-first; avoid introducing backend dependencies unless the product direction changes
-- live-monitor changes should preserve single in-flight inference behavior and avoid UI flicker/regressions
-- if you touch the posture pipeline, update tests around dropout handling, displayed-state stability, and session/reminder behavior
-- keep `last-mile-project-status.md` current when implementation state changes
+- keep the app local-first unless a task explicitly changes product direction
+- do not add backend dependencies unless explicitly requested
+- do not add medical diagnosis, prediction, or serious-mode behavior unless explicitly requested
+- preserve the current premium dark UI direction unless a task explicitly asks for a visual change
+- update the handoff docs when meaningful milestones are completed
 
-## Planning and Handoff Docs
+## Project Docs
+
+Read these in this order for implementation context:
+
+1. [`project-context.md`](./project-context.md)
+2. [`project-history.md`](./project-history.md)
+3. [`next-steps.md`](./next-steps.md)
+
+Additional planning/reference docs still in the repo:
 
 - [`last-mile-implementation-plan-tech-finalization.md`](./last-mile-implementation-plan-tech-finalization.md)
 - [`last-mile-full-implementation-plan.md`](./last-mile-full-implementation-plan.md)
-- [`last-mile-project-status.md`](./last-mile-project-status.md)
-- [`next-steps.md`](./next-steps.md)
